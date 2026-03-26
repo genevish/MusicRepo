@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MusicRepo</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #24243a;
+    --accent: #7c5cfc;
+    --accent2: #a78bfa;
+    --text: #e2e2f0;
+    --muted: #7070a0;
+    --border: #2e2e45;
+    --danger: #ef4444;
+    --play: #22c55e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  header h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent2); white-space: nowrap; }
+  .stats { display: flex; gap: 16px; font-size: 0.75rem; color: var(--muted); flex: 1; }
+  .stat span { color: var(--text); font-weight: 600; }
+  .dl-btn { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 700; padding: 7px 16px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  .dl-btn:hover { background: var(--accent2); }
+
+  /* Modal overlay */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal-overlay.hidden { display: none; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 480px; max-width: 95vw; box-shadow: 0 24px 60px rgba(0,0,0,.6); overflow: hidden; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+  .modal-header h2 { font-size: 1rem; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 1.3rem; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Download form fields */
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .field textarea, .field input[type=text] { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 0.9rem; outline: none; resize: vertical; font-family: inherit; }
+  .field textarea:focus, .field input[type=text]:focus { border-color: var(--accent); }
+  .field textarea { min-height: 70px; }
+
+  /* Toggle row */
+  .toggle-row { display: flex; align-items: center; gap: 10px; }
+  .toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; cursor: pointer; transition: background .2s; }
+  .toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+  .toggle-slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: transform .2s; }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+  .toggle-label { font-size: 0.85rem; }
+  .toggle-sub { font-size: 0.75rem; color: var(--muted); }
+
+  /* Progress area */
+  .dl-progress { display: none; flex-direction: column; gap: 8px; }
+  .dl-progress.visible { display: flex; }
+  .progress-bar-wrap { background: var(--surface2); border-radius: 6px; height: 8px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s; width: 0%; }
+  .progress-label { font-size: 0.8rem; color: var(--muted); display: flex; justify-content: space-between; }
+  .dl-log { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 0.72rem; color: var(--muted); max-height: 120px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+
+  /* Jobs history */
+  .jobs-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+  .job-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface2); border-radius: 8px; font-size: 0.8rem; }
+  .job-status { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .job-status.done { background: var(--play); }
+  .job-status.running { background: var(--accent); animation: pulse 1s infinite; }
+  .job-status.error { background: var(--danger); }
+  .job-status.queued { background: var(--muted); }
+  .job-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-count { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+  /* Submit btn */
+  .modal-footer { padding: 0 20px 20px; display: flex; gap: 10px; }
+  .btn-primary { flex: 1; padding: 10px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-secondary { padding: 10px 16px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.9rem; cursor: pointer; }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* Search & filters */
+  .toolbar { display: flex; gap: 10px; align-items: center; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  .search-box { flex: 1; min-width: 200px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; color: var(--text); font-size: 0.9rem; outline: none; }
+  .search-box:focus { border-color: var(--accent); }
+  select { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; color: var(--text); font-size: 0.85rem; outline: none; cursor: pointer; }
+  select:focus { border-color: var(--accent); }
+  .view-toggle { display: flex; gap: 4px; }
+  .view-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--muted); cursor: pointer; font-size: 0.8rem; }
+  .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Main layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Track list */
+  .library { flex: 1; overflow-y: auto; padding: 10px; }
+  .library::-webkit-scrollbar { width: 6px; }
+  .library::-webkit-scrollbar-track { background: transparent; }
+  .library::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Grid view */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card.active { border-color: var(--play); }
+  .card-thumb { width: 100%; aspect-ratio: 16/9; background: var(--surface2); object-fit: cover; }
+  .card-thumb-placeholder { width: 100%; aspect-ratio: 16/9; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 2rem; }
+  .card-body { padding: 8px 10px; }
+  .card-title { font-size: 0.8rem; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-meta { font-size: 0.7rem; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; }
+  .card-badge { font-size: 0.65rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+  /* List view */
+  .list-view { display: flex; flex-direction: column; gap: 2px; }
+  .list-row { display: grid; grid-template-columns: 48px 1fr 160px 80px 60px 50px; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; cursor: pointer; transition: background .1s; }
+  .list-row:hover { background: var(--surface); }
+  .list-row.active { background: var(--surface2); border-left: 3px solid var(--play); }
+  .list-thumb { width: 48px; height: 27px; object-fit: cover; border-radius: 4px; }
+  .list-thumb-placeholder { width: 48px; height: 27px; background: var(--surface2); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+  .list-title { font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-artist { font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-genre { font-size: 0.75rem; color: var(--muted); }
+  .list-dur { font-size: 0.75rem; color: var(--muted); text-align: right; }
+  .list-type { font-size: 0.68rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; text-align: center; color: var(--muted); }
+  .list-header { display: grid; grid-template-columns: 48px 1fr 160px 80px 60px 50px; gap: 10px; padding: 4px 12px 8px; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+
+  /* Player panel (side) */
+  .player-panel { width: 300px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .player-panel.hidden { display: none; }
+  .player-top { flex: 1; overflow-y: auto; padding: 14px; }
+  .player-top::-webkit-scrollbar { width: 4px; }
+  .player-top::-webkit-scrollbar-thumb { background: var(--border); }
+  .player-art-wrap { position: relative; margin-bottom: 12px; cursor: pointer; }
+  .player-art { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; background: var(--surface2); display: block; }
+  .player-art-placeholder { width: 100%; aspect-ratio: 16/9; background: var(--surface2); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 3rem; }
+  .player-art-expand { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); border-radius: 8px; opacity: 0; transition: opacity .15s; font-size: 2rem; }
+  .player-art-wrap:hover .player-art-expand { opacity: 1; }
+  .player-title { font-size: 0.9rem; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }
+  .player-artist { font-size: 0.8rem; color: var(--muted); margin-bottom: 12px; }
+  .player-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .meta-tag { font-size: 0.72rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
+  .edit-fields { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+  .edit-field { display: flex; flex-direction: column; gap: 3px; }
+  .edit-field label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .edit-field input { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; color: var(--text); font-size: 0.8rem; outline: none; }
+  .edit-field input:focus { border-color: var(--accent); }
+  .save-btn { width: 100%; padding: 7px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+  .save-btn:hover { background: var(--accent2); }
+  .player-audio { padding: 0 14px 14px; flex-shrink: 0; }
+  audio { width: 100%; border-radius: 8px; display: block; }
+
+  /* Video modal overlay */
+  .video-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 24px; }
+  .video-overlay.hidden { display: none; }
+  .video-modal { position: relative; width: 100%; max-width: 1100px; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,.8); }
+  .video-modal video { width: 100%; max-height: calc(100vh - 100px); display: block; object-fit: contain; }
+  .video-modal-header { position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; background: linear-gradient(to bottom, rgba(0,0,0,.8), transparent); display: flex; align-items: flex-start; justify-content: space-between; z-index: 1; }
+  .video-modal-title { color: #fff; font-size: 0.9rem; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,.8); max-width: calc(100% - 50px); line-height: 1.3; }
+  .video-close { background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; color: #fff; font-size: 1.1rem; line-height: 1; padding: 6px 12px; cursor: pointer; flex-shrink: 0; }
+  .video-close:hover { background: var(--danger); border-color: var(--danger); }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty h2 { font-size: 1.2rem; margin-bottom: 8px; color: var(--text); }
+  .empty code { background: var(--surface2); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; display: block; margin-top: 12px; }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .player-panel { display: none !important; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎵 MusicRepo</h1>
+  <div class="stats" id="stats">
+    <div>Tracks: <span id="stat-total">—</span></div>
+    <div>Videos: <span id="stat-videos">—</span></div>
+    <div>Audio: <span id="stat-audio">—</span></div>
+    <div>Duration: <span id="stat-mins">—</span> min</div>
+  </div>
+  <button class="dl-btn" id="enrich-btn" onclick="startEnrich(false)" title="Auto-fill genre, album, artist for all tracks">✨ Enrich Metadata</button>
+  <button class="dl-btn" onclick="openDownloadModal()">⬇ Download</button>
+</header>
+
+<!-- Download modal -->
+<div class="modal-overlay hidden" id="dl-overlay" onclick="if(event.target===this)closeDownloadModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⬇ Download from YouTube</h2>
+      <button class="modal-close" onclick="closeDownloadModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>YouTube URL(s)</label>
+        <textarea id="dl-url" placeholder="https://youtube.com/watch?v=…&#10;Paste one URL, a playlist URL, or multiple URLs (one per line)"></textarea>
+      </div>
+      <div class="field">
+        <label>Playlist / Collection name <span style="color:var(--muted);font-size:.7rem">(optional)</span></label>
+        <input type="text" id="dl-playlist" placeholder="e.g. Chill Mix, Road Trip, Workout">
+      </div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="dl-audio-only"><span class="toggle-slider"></span></label>
+        <div>
+          <div class="toggle-label">Audio only (MP3)</div>
+          <div class="toggle-sub">Smaller file, no video — ideal for music</div>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="dl-progress" id="dl-progress">
+        <div class="progress-label">
+          <span id="dl-progress-title">Downloading…</span>
+          <span id="dl-progress-pct">0%</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="dl-progress-bar"></div></div>
+        <div class="dl-log" id="dl-log"></div>
+      </div>
+
+      <!-- Past jobs -->
+      <div id="jobs-section" style="display:none">
+        <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent downloads</div>
+        <div class="jobs-list" id="jobs-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeDownloadModal()">Close</button>
+      <button class="btn-primary" id="dl-submit" onclick="startDownload()">Start Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- Enrich status bar -->
+<div id="enrich-bar" style="display:none; align-items:center; gap:12px; padding:7px 20px; background:var(--surface2); border-bottom:1px solid var(--border); font-size:0.8rem; flex-shrink:0;">
+  <span id="enrich-bar-icon">✨</span>
+  <span id="enrich-bar-text" style="flex:1;color:var(--muted)">Enriching metadata…</span>
+  <div style="width:160px;background:var(--border);border-radius:4px;height:5px;overflow:hidden">
+    <div id="enrich-bar-fill" style="height:100%;background:var(--accent);border-radius:4px;width:0%;transition:width .4s"></div>
+  </div>
+  <span id="enrich-bar-pct" style="color:var(--muted);min-width:40px;text-align:right">0%</span>
+</div>
+
+<div class="toolbar">
+  <input class="search-box" id="search" placeholder="Search title, artist…" autocomplete="off">
+  <select id="filter-genre"><option value="">All genres</option></select>
+  <select id="filter-artist"><option value="">All artists</option></select>
+  <select id="filter-playlist"><option value="">All playlists</option></select>
+  <select id="order">
+    <option value="added_at">Newest</option>
+    <option value="title">Title</option>
+    <option value="artist">Artist</option>
+    <option value="play_count">Most played</option>
+    <option value="duration">Duration</option>
+  </select>
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-grid" onclick="setView('grid')">⊞ Grid</button>
+    <button class="view-btn" id="btn-list" onclick="setView('list')">☰ List</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="library" id="library">
+    <div class="empty"><h2>Loading…</h2></div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="player-panel hidden" id="player-panel">
+    <div class="player-top">
+      <!-- Thumbnail — click to open video modal -->
+      <div class="player-art-wrap" id="player-art-wrap" onclick="openVideoModal()">
+        <div class="player-art-placeholder">🎵</div>
+        <div class="player-art-expand">▶</div>
+      </div>
+      <div class="player-title" id="player-title">No track selected</div>
+      <div class="player-artist" id="player-artist"></div>
+      <div class="player-meta" id="player-meta"></div>
+      <div class="edit-fields">
+        <div class="edit-field"><label>Artist</label><input id="edit-artist" placeholder="Artist name"></div>
+        <div class="edit-field"><label>Genre</label><input id="edit-genre" placeholder="e.g. Rock"></div>
+        <div class="edit-field"><label>Album</label><input id="edit-album" placeholder="Album name"></div>
+        <div class="edit-field"><label>Playlist</label><input id="edit-playlist" placeholder="Playlist name"></div>
+      </div>
+      <button class="save-btn" onclick="saveTag()">Save tags</button>
+    </div>
+    <!-- Audio player lives here for audio-only tracks -->
+    <div class="player-audio" id="player-audio"></div>
+  </div>
+</div>
+
+<!-- Video modal overlay -->
+<div class="video-overlay hidden" id="video-overlay" onclick="if(event.target===this)closeVideoModal()">
+  <div class="video-modal" id="video-modal">
+    <div class="video-modal-header">
+      <div class="video-modal-title" id="video-modal-title"></div>
+      <button class="video-close" onclick="closeVideoModal()" title="Close (Esc)">✕ Close</button>
+    </div>
+    <video id="video-player" controls></video>
+  </div>
+</div>
+
+<script>
+let tracks = [], currentId = null, viewMode = 'grid';
+
+function fmt(secs) {
+  if (!secs) return '?';
+  const m = Math.floor(secs / 60), s = Math.floor(secs % 60);
+  const h = Math.floor(m / 60);
+  return h ? `${h}:${String(m%60).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+}
+
+async function loadStats() {
+  const s = await fetch('/api/stats').then(r => r.json());
+  document.getElementById('stat-total').textContent = s.total;
+  document.getElementById('stat-videos').textContent = s.videos;
+  document.getElementById('stat-audio').textContent = s.audio;
+  document.getElementById('stat-mins').textContent = s.total_minutes;
+}
+
+async function loadFilters() {
+  const f = await fetch('/api/filters').then(r => r.json());
+  const populate = (id, items) => {
+    const sel = document.getElementById(id);
+    const first = sel.options[0];
+    sel.innerHTML = '';
+    sel.appendChild(first);
+    items.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  };
+  populate('filter-genre', f.genres);
+  populate('filter-artist', f.artists);
+  populate('filter-playlist', f.playlists);
+}
+
+async function loadTracks() {
+  const q = document.getElementById('search').value;
+  const genre = document.getElementById('filter-genre').value;
+  const artist = document.getElementById('filter-artist').value;
+  const playlist = document.getElementById('filter-playlist').value;
+  const order = document.getElementById('order').value;
+  const params = new URLSearchParams({ q, genre, artist, playlist, order });
+  tracks = await fetch('/api/tracks?' + params).then(r => r.json());
+  renderLibrary();
+}
+
+function thumb(t) {
+  if (t.thumbnail) return `<img class="${viewMode === 'grid' ? 'card-thumb' : 'list-thumb'}" src="/media/${encodeURIComponent(t.id + '.jpg')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="${viewMode === 'grid' ? 'card-thumb-placeholder' : 'list-thumb-placeholder'}" style="display:none">🎵</div>`;
+  return `<div class="${viewMode === 'grid' ? 'card-thumb-placeholder' : 'list-thumb-placeholder'}">🎵</div>`;
+}
+
+function renderLibrary() {
+  const lib = document.getElementById('library');
+  if (!tracks.length) {
+    lib.innerHTML = `<div class="empty"><h2>No tracks found</h2><p>Download music with the downloader script:</p><code>python downloader.py "https://youtube.com/watch?v=..." --audio-only</code></div>`;
+    return;
+  }
+
+  if (viewMode === 'grid') {
+    lib.innerHTML = `<div class="grid">${tracks.map(t => `
+      <div class="card${t.id === currentId ? ' active' : ''}" onclick="play('${t.id}')">
+        ${thumb(t)}
+        <div class="card-body">
+          <div class="card-title">${esc(t.title)}</div>
+          <div class="card-meta">
+            <span>${esc(t.artist || t.uploader || '')}</span>
+            <span class="card-badge">${t.file_type}</span>
+          </div>
+        </div>
+      </div>`).join('')}</div>`;
+  } else {
+    lib.innerHTML = `
+      <div class="list-header"><div></div><div>Title</div><div>Artist</div><div>Genre</div><div>Duration</div><div>Type</div></div>
+      <div class="list-view">${tracks.map(t => `
+        <div class="list-row${t.id === currentId ? ' active' : ''}" onclick="play('${t.id}')">
+          ${thumb(t)}
+          <div><div class="list-title">${esc(t.title)}</div></div>
+          <div class="list-artist">${esc(t.artist || t.uploader || '')}</div>
+          <div class="list-genre">${esc(t.genre || '')}</div>
+          <div class="list-dur">${fmt(t.duration)}</div>
+          <div class="list-type">${t.file_type}</div>
+        </div>`).join('')}</div>`;
+  }
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let currentSrc = '';
+
+function play(id) {
+  currentId = id;
+  const t = tracks.find(x => x.id === id);
+  if (!t) return;
+
+  fetch(`/api/play/${id}`);
+
+  // Side panel info
+  const thumbSrc = `/media/${encodeURIComponent(t.id + '.jpg')}`;
+  const artWrap = document.getElementById('player-art-wrap');
+  const isVideo = ['mp4','mkv','webm'].includes(t.file_type);
+  artWrap.innerHTML = t.thumbnail
+    ? `<img class="player-art" src="${thumbSrc}" onerror="this.outerHTML='<div class=\\'player-art-placeholder\\'>🎵</div>'">
+       ${isVideo ? '<div class="player-art-expand">▶</div>' : ''}`
+    : `<div class="player-art-placeholder">🎵</div>`;
+  // only open video on click for video files
+  artWrap.style.cursor = isVideo ? 'pointer' : 'default';
+  artWrap.onclick = isVideo ? openVideoModal : null;
+
+  document.getElementById('player-title').textContent = t.title;
+  document.getElementById('player-artist').textContent = t.artist || t.uploader || '';
+
+  const meta = [
+    t.genre    ? `<span class="meta-tag">🎸 ${esc(t.genre)}</span>`    : '',
+    t.album    ? `<span class="meta-tag">💿 ${esc(t.album)}</span>`    : '',
+    t.playlist ? `<span class="meta-tag">📋 ${esc(t.playlist)}</span>` : '',
+    `<span class="meta-tag">⏱ ${fmt(t.duration)}</span>`,
+    `<span class="meta-tag">▶ ${t.play_count} plays</span>`,
+  ].filter(Boolean).join('');
+  document.getElementById('player-meta').innerHTML = meta;
+
+  document.getElementById('edit-artist').value   = t.artist   || '';
+  document.getElementById('edit-genre').value    = t.genre    || '';
+  document.getElementById('edit-album').value    = t.album    || '';
+  document.getElementById('edit-playlist').value = t.playlist || '';
+
+  const fname = t.file_path ? t.file_path.split('/').pop() : `${t.id}.${t.file_type}`;
+  currentSrc = `/media/${encodeURIComponent(fname)}`;
+
+  const audioEl = document.getElementById('player-audio');
+  if (isVideo) {
+    audioEl.innerHTML = '';        // no audio element in panel for videos
+    openVideoModal();              // auto-open video modal
+  } else {
+    audioEl.innerHTML = `<audio controls autoplay src="${currentSrc}"></audio>`;
+  }
+
+  document.getElementById('player-panel').classList.remove('hidden');
+  renderLibrary();
+}
+
+function openVideoModal() {
+  if (!currentSrc) return;
+  const t = tracks.find(x => x.id === currentId);
+  const overlay = document.getElementById('video-overlay');
+  const videoEl = document.getElementById('video-player');
+  document.getElementById('video-modal-title').textContent = t ? t.title : '';
+  videoEl.src = currentSrc;
+  videoEl.play();
+  overlay.classList.remove('hidden');
+}
+
+function closeVideoModal() {
+  const overlay = document.getElementById('video-overlay');
+  const videoEl = document.getElementById('video-player');
+  videoEl.pause();
+  videoEl.src = '';
+  overlay.classList.add('hidden');
+}
+
+async function saveTag() {
+  if (!currentId) return;
+  const params = new URLSearchParams({
+    artist:   document.getElementById('edit-artist').value,
+    genre:    document.getElementById('edit-genre').value,
+    album:    document.getElementById('edit-album').value,
+    playlist: document.getElementById('edit-playlist').value,
+  });
+  await fetch(`/api/tag/${currentId}?${params}`);
+  // Refresh track list and filters, then re-render panel meta chips
+  await Promise.all([loadTracks(), loadFilters()]);
+  const t = tracks.find(x => x.id === currentId);
+  if (t) {
+    const meta = [
+      t.genre    ? `<span class="meta-tag">🎸 ${esc(t.genre)}</span>`    : '',
+      t.album    ? `<span class="meta-tag">💿 ${esc(t.album)}</span>`    : '',
+      t.playlist ? `<span class="meta-tag">📋 ${esc(t.playlist)}</span>` : '',
+      `<span class="meta-tag">⏱ ${fmt(t.duration)}</span>`,
+      `<span class="meta-tag">▶ ${t.play_count} plays</span>`,
+    ].filter(Boolean).join('');
+    document.getElementById('player-meta').innerHTML = meta;
+  }
+}
+
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('btn-grid').classList.toggle('active', mode === 'grid');
+  document.getElementById('btn-list').classList.toggle('active', mode === 'list');
+  renderLibrary();
+}
+
+// Wire up controls
+let debounce;
+document.getElementById('search').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(loadTracks, 250); });
+['filter-genre','filter-artist','filter-playlist','order'].forEach(id => document.getElementById(id).addEventListener('change', loadTracks));
+
+// Init
+Promise.all([loadStats(), loadFilters(), loadTracks()]);
+
+// ── Enrich metadata ───────────────────────────────────────────────────────────
+let enrichPollTimer = null;
+
+async function startEnrich(force = false) {
+  const btn = document.getElementById('enrich-btn');
+  btn.disabled = true;
+  await fetch('/api/enrich', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ force })
+  });
+  pollEnrich();
+}
+
+function pollEnrich() {
+  clearInterval(enrichPollTimer);
+  enrichPollTimer = setInterval(async () => {
+    const s = await fetch('/api/enrich').then(r => r.json()).catch(() => null);
+    if (!s) return;
+    const bar = document.getElementById('enrich-bar');
+    const btn = document.getElementById('enrich-btn');
+
+    if (s.status === 'running') {
+      bar.style.display = 'flex';
+      const pct = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0;
+      document.getElementById('enrich-bar-fill').style.width = pct + '%';
+      document.getElementById('enrich-bar-pct').textContent = pct + '%';
+      document.getElementById('enrich-bar-text').textContent =
+        s.current_title ? `Enriching: ${s.current_title}` : 'Looking up metadata…';
+      document.getElementById('enrich-bar-icon').textContent = '✨';
+    } else if (s.status === 'done') {
+      clearInterval(enrichPollTimer);
+      bar.style.display = 'flex';
+      document.getElementById('enrich-bar-fill').style.width = '100%';
+      document.getElementById('enrich-bar-fill').style.background = 'var(--play)';
+      document.getElementById('enrich-bar-pct').textContent = '100%';
+      document.getElementById('enrich-bar-text').textContent =
+        `✓ Enriched ${s.updated} track(s) — ${s.failed} unchanged`;
+      document.getElementById('enrich-bar-icon').textContent = '✅';
+      btn.disabled = false;
+      setTimeout(() => { bar.style.display = 'none'; }, 4000);
+      Promise.all([loadStats(), loadFilters(), loadTracks()]);
+    } else if (s.status === 'error') {
+      clearInterval(enrichPollTimer);
+      document.getElementById('enrich-bar-text').textContent = '✗ Error: ' + s.error;
+      document.getElementById('enrich-bar-icon').textContent = '❌';
+      btn.disabled = false;
+    } else {
+      // idle
+      clearInterval(enrichPollTimer);
+      btn.disabled = false;
+    }
+  }, 600);
+}
+
+// Poll on load in case server was enriching before page opened
+(async () => {
+  const s = await fetch('/api/enrich').then(r => r.json()).catch(() => null);
+  if (s && s.status === 'running') pollEnrich();
+})();
+
+// ── Download modal ────────────────────────────────────────────────────────────
+let activeJobId = null, pollTimer = null;
+
+function openDownloadModal() {
+  document.getElementById('dl-overlay').classList.remove('hidden');
+  document.getElementById('dl-url').focus();
+  refreshJobsList();
+}
+
+function closeDownloadModal() {
+  document.getElementById('dl-overlay').classList.add('hidden');
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (!document.getElementById('video-overlay').classList.contains('hidden')) closeVideoModal();
+    else closeDownloadModal();
+  }
+});
+
+async function startDownload() {
+  const rawUrl = document.getElementById('dl-url').value.trim();
+  if (!rawUrl) { document.getElementById('dl-url').focus(); return; }
+
+  // support multiple URLs (one per line) — queue each as separate job
+  const urls = rawUrl.split('\n').map(u => u.trim()).filter(Boolean);
+  const audioOnly = document.getElementById('dl-audio-only').checked;
+  const playlist = document.getElementById('dl-playlist').value.trim();
+
+  document.getElementById('dl-submit').disabled = true;
+  document.getElementById('dl-progress').classList.add('visible');
+  document.getElementById('dl-log').textContent = '';
+
+  for (const url of urls) {
+    const res = await fetch('/api/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url, audio_only: audioOnly, playlist: playlist || null })
+    }).then(r => r.json());
+
+    activeJobId = res.job_id;
+    await pollJob(activeJobId);
+  }
+
+  document.getElementById('dl-submit').disabled = false;
+  document.getElementById('dl-url').value = '';
+  Promise.all([loadStats(), loadFilters(), loadTracks()]);
+}
+
+async function pollJob(jobId) {
+  return new Promise(resolve => {
+    const logEl = document.getElementById('dl-log');
+    const barEl = document.getElementById('dl-progress-bar');
+    const pctEl = document.getElementById('dl-progress-pct');
+    const titleEl = document.getElementById('dl-progress-title');
+    let lastLogLen = 0;
+
+    const tick = async () => {
+      const job = await fetch(`/api/jobs/${jobId}?log=1`).then(r => r.json()).catch(() => null);
+      if (!job) return;
+
+      // progress bar
+      const pct = job.progress || 0;
+      barEl.style.width = pct + '%';
+      pctEl.textContent = pct.toFixed(0) + '%';
+      if (job.current_title) titleEl.textContent = job.current_title;
+
+      // append new log lines
+      if (job.log && job.log.length > lastLogLen) {
+        const newLines = job.log.slice(lastLogLen).join('\n');
+        logEl.textContent += (lastLogLen > 0 ? '\n' : '') + newLines;
+        logEl.scrollTop = logEl.scrollHeight;
+        lastLogLen = job.log.length;
+      }
+
+      refreshJobsList();
+
+      if (job.status === 'done') {
+        titleEl.textContent = `✓ Done — ${job.track_count} track(s) saved`;
+        barEl.style.background = 'var(--play)';
+        clearInterval(pollTimer);
+        resolve();
+      } else if (job.status === 'error') {
+        titleEl.textContent = '✗ Error';
+        barEl.style.background = 'var(--danger)';
+        logEl.textContent += '\n\nERROR: ' + job.error;
+        logEl.scrollTop = logEl.scrollHeight;
+        clearInterval(pollTimer);
+        resolve();
+      }
+    };
+
+    tick();
+    pollTimer = setInterval(tick, 800);
+  });
+}
+
+async function refreshJobsList() {
+  const jobs = await fetch('/api/jobs').then(r => r.json()).catch(() => []);
+  const section = document.getElementById('jobs-section');
+  const list = document.getElementById('jobs-list');
+  if (!jobs.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = jobs.slice(0, 8).map(j => {
+    const icon = { done: '✓', error: '✗', running: '…', queued: '⋯' }[j.status] || '?';
+    const label = j.status === 'done' ? `${j.track_count} track(s)` : j.status === 'error' ? 'failed' : j.status;
+    const short = j.url.length > 50 ? j.url.slice(0, 48) + '…' : j.url;
+    return `<div class="job-row">
+      <div class="job-status ${j.status}"></div>
+      <div class="job-title" title="${esc(j.url)}">${esc(short)}</div>
+      <div class="job-count">${label}</div>
+    </div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
