@@ -18,7 +18,7 @@
     --play: #22c55e;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   /* Header */
   header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -218,7 +218,6 @@
     <div>Audio: <span id="stat-audio">—</span></div>
     <div>Duration: <span id="stat-mins">—</span> min</div>
   </div>
-  <button class="dl-btn" id="enrich-btn" onclick="startEnrich(false)" title="Auto-fill genre, album, artist for all tracks">✨ Enrich Metadata</button>
   <button class="dl-btn" onclick="openDownloadModal()">⬇ Download</button>
 </header>
 
@@ -672,19 +671,8 @@ document.getElementById('search').addEventListener('input', () => { clearTimeout
 document.getElementById('video-player').addEventListener('ended', playNext);
 Promise.all([loadStats(), loadFilters(), loadTracks()]);
 
-// ── Enrich metadata ───────────────────────────────────────────────────────────
+// ── Enrich metadata (auto-runs after each download) ───────────────────────────
 let enrichPollTimer = null;
-
-async function startEnrich(force = false) {
-  const btn = document.getElementById('enrich-btn');
-  btn.disabled = true;
-  await fetch('/api/enrich', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ force })
-  });
-  pollEnrich();
-}
 
 function pollEnrich() {
   clearInterval(enrichPollTimer);
@@ -692,7 +680,6 @@ function pollEnrich() {
     const s = await fetch('/api/enrich').then(r => r.json()).catch(() => null);
     if (!s) return;
     const bar = document.getElementById('enrich-bar');
-    const btn = document.getElementById('enrich-btn');
 
     if (s.status === 'running') {
       bar.style.display = 'flex';
@@ -711,18 +698,14 @@ function pollEnrich() {
       document.getElementById('enrich-bar-text').textContent =
         `✓ Enriched ${s.updated} track(s) — ${s.failed} unchanged`;
       document.getElementById('enrich-bar-icon').textContent = '✅';
-      btn.disabled = false;
       setTimeout(() => { bar.style.display = 'none'; }, 4000);
       Promise.all([loadStats(), loadFilters(), loadTracks()]);
     } else if (s.status === 'error') {
       clearInterval(enrichPollTimer);
       document.getElementById('enrich-bar-text').textContent = '✗ Error: ' + s.error;
       document.getElementById('enrich-bar-icon').textContent = '❌';
-      btn.disabled = false;
     } else {
-      // idle
       clearInterval(enrichPollTimer);
-      btn.disabled = false;
     }
   }, 600);
 }
@@ -783,6 +766,7 @@ async function startDownload() {
   document.getElementById('dl-submit').disabled = false;
   document.getElementById('dl-url').value = '';
   Promise.all([loadStats(), loadFilters(), loadTracks()]);
+  pollEnrich();   // backend auto-enriches new tracks after every download
 }
 
 async function pollJob(jobId) {
@@ -909,6 +893,7 @@ async function retryJob(jobId) {
 
   document.getElementById('dl-submit').disabled = false;
   Promise.all([loadStats(), loadFilters(), loadTracks()]);
+  pollEnrich();
 }
 </script>
 </body>
