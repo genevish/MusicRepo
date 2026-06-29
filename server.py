@@ -447,6 +447,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     import webbrowser, threading
+    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     httpd = HTTPServer(("", PORT), Handler)
     print(f"[MusicRepo] Server running at http://localhost:{PORT}")
     print(f"[MusicRepo] Library: {DB_PATH}")
