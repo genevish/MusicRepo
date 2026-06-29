@@ -137,6 +137,11 @@ def _run_download(job_id: str, url: str, audio_only: bool, playlist_name: str):
                 with jobs_lock:
                     jobs[job_id]["progress"] = pct
                     jobs[job_id]["current_title"] = current_title
+            m = re.search(r'Downloading\s+(?:video|item)\s+(\d+)\s+of\s+(\d+)', line)
+            if m:
+                with jobs_lock:
+                    jobs[job_id]["playlist_current"] = int(m.group(1))
+                    jobs[job_id]["playlist_total"] = int(m.group(2))
             log(line)
 
         proc.wait()
@@ -434,6 +439,7 @@ class Handler(BaseHTTPRequestHandler):
                     "id": job_id, "status": "queued", "progress": 0,
                     "log": [], "error": None, "tracks": [],
                     "track_count": 0, "current_title": "",
+                    "playlist_current": 0, "playlist_total": 0,
                     "url": url, "audio_only": audio_only,
                     "started_at": datetime.now().isoformat(),
                 }

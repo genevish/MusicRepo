@@ -221,13 +221,19 @@
           <span id="dl-progress-pct">0%</span>
         </div>
         <div class="progress-bar-wrap"><div class="progress-bar" id="dl-progress-bar"></div></div>
-        <div class="dl-log" id="dl-log"></div>
+        <div id="dl-progress-counter" style="font-size:.75rem;color:var(--muted);display:none"></div>
       </div>
 
       <!-- Past jobs -->
       <div id="jobs-section" style="display:none">
         <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent downloads</div>
         <div class="jobs-list" id="jobs-list"></div>
+      </div>
+
+      <!-- Collapsible log -->
+      <div id="log-section" style="display:none">
+        <button class="btn-secondary" id="log-toggle" style="font-size:.72rem;padding:4px 10px" onclick="toggleLog()">▸ More info</button>
+        <div class="dl-log" id="dl-log" style="display:none;margin-top:6px"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -613,7 +619,8 @@ async function startDownload() {
 
   document.getElementById('dl-submit').disabled = true;
   document.getElementById('dl-progress').classList.add('visible');
-  document.getElementById('dl-log').textContent = '';
+  resetLog();
+  resetPlaylistCounter();
 
   for (const url of urls) {
     const res = await fetch('/api/download', {
@@ -649,8 +656,16 @@ async function pollJob(jobId) {
       pctEl.textContent = pct.toFixed(0) + '%';
       if (job.current_title) titleEl.textContent = job.current_title;
 
-      // append new log lines
+      // playlist counter
+      const counterEl = document.getElementById('dl-progress-counter');
+      if (job.playlist_total && job.playlist_total > 1) {
+        counterEl.style.display = 'block';
+        counterEl.textContent = `Downloading ${job.playlist_current || 0} of ${job.playlist_total}`;
+      }
+
+      // append new log lines (log itself stays hidden until user clicks "More info")
       if (job.log && job.log.length > lastLogLen) {
+        document.getElementById('log-section').style.display = 'block';
         const newLines = job.log.slice(lastLogLen).join('\n');
         logEl.textContent += (lastLogLen > 0 ? '\n' : '') + newLines;
         logEl.scrollTop = logEl.scrollHeight;
@@ -705,13 +720,35 @@ async function refreshJobsList() {
   }).join('');
 }
 
+function toggleLog() {
+  const log = document.getElementById('dl-log');
+  const btn = document.getElementById('log-toggle');
+  const showing = log.style.display !== 'none';
+  log.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? '▸ More info' : '▾ Hide log';
+}
+
+function resetLog() {
+  document.getElementById('dl-log').textContent = '';
+  document.getElementById('dl-log').style.display = 'none';
+  document.getElementById('log-toggle').textContent = '▸ More info';
+  document.getElementById('log-section').style.display = 'none';
+}
+
+function resetPlaylistCounter() {
+  const counterEl = document.getElementById('dl-progress-counter');
+  counterEl.style.display = 'none';
+  counterEl.textContent = '';
+}
+
 async function retryJob(jobId) {
   const j = jobsCache[jobId];
   if (!j) return;
 
   document.getElementById('dl-submit').disabled = true;
   document.getElementById('dl-progress').classList.add('visible');
-  document.getElementById('dl-log').textContent = '';
+  resetLog();
+  resetPlaylistCounter();
   document.getElementById('dl-progress-bar').style.background = 'var(--accent)';
 
   const res = await fetch('/api/download', {
