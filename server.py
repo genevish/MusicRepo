@@ -23,6 +23,7 @@ import enricher as _enricher
 BASE_DIR = Path(__file__).parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 DB_PATH = BASE_DIR / "data" / "library.db"
+ARCHIVE_PATH = BASE_DIR / "data" / "downloads.archive"
 STATIC_DIR = BASE_DIR / "static"
 PORT = 8765
 
@@ -107,6 +108,8 @@ def _run_download(job_id: str, url: str, audio_only: bool, playlist_name: str):
             "--write-thumbnail", "--convert-thumbnails", "jpg",
             "--embed-metadata",
             "--write-info-json",   # saves <id>.info.json with full metadata
+            "--download-archive", str(ARCHIVE_PATH),  # skip items already fetched on retry
+            "--ignore-errors",     # skip private/deleted items instead of aborting the playlist
             "--progress",
             "--newline",
         ]
@@ -137,8 +140,8 @@ def _run_download(job_id: str, url: str, audio_only: bool, playlist_name: str):
             log(line)
 
         proc.wait()
-        if proc.returncode != 0:
-            raise RuntimeError("yt-dlp exited with error — check log for details.")
+        # With --ignore-errors, yt-dlp may exit non-zero even after partial success;
+        # we'll judge real failure below by whether anything was cataloged.
 
         # Read metadata from newly written .info.json files
         after = set(DOWNLOADS_DIR.glob("*.info.json"))
@@ -190,6 +193,9 @@ def _run_download(job_id: str, url: str, audio_only: bool, playlist_name: str):
             _upsert_track(conn, track)
             saved.append(track)
         conn.close()
+
+        if not saved and proc.returncode != 0:
+            raise RuntimeError("yt-dlp exited with error and no items were downloaded — check log.")
 
         with jobs_lock:
             jobs[job_id]["status"] = "done"
@@ -438,10 +444,48 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json({"error": "not found"}, 404)
 
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path.startswith("/api/tracks/"):
+            track_id = path.split("/api/tracks/")[1]
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", track_id):
+                self.send_json({"error": "invalid id"}, 400)
+                return
+
+            conn = get_db()
+            row = conn.execute("SELECT id FROM tracks WHERE id=?", (track_id,)).fetchone()
+            if not row:
+                conn.close()
+                self.send_json({"error": "not found"}, 404)
+                return
+            conn.execute("DELETE FROM tracks WHERE id=?", (track_id,))
+            conn.commit()
+            conn.close()
+
+            for f in DOWNLOADS_DIR.glob(f"{track_id}.*"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+
+            if ARCHIVE_PATH.exists():
+                try:
+                    lines = ARCHIVE_PATH.read_text(encoding="utf-8").splitlines()
+                    kept = [ln for ln in lines if not ln.strip().endswith(" " + track_id)]
+                    ARCHIVE_PATH.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+                except OSError:
+                    pass
+
+            self.send_json({"ok": True})
+        else:
+            self.send_json({"error": "not found"}, 404)
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.end_headers()
 
 

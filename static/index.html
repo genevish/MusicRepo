@@ -288,6 +288,7 @@
         <div class="edit-field"><label>Playlist</label><input id="edit-playlist" placeholder="Playlist name"></div>
       </div>
       <button class="save-btn" onclick="saveTag()">Save tags</button>
+      <button class="save-btn" style="background:var(--danger);margin-top:6px" onclick="deleteTrack()">🗑 Delete track</button>
     </div>
     <!-- Audio player lives here for audio-only tracks -->
     <div class="player-audio" id="player-audio"></div>
@@ -459,6 +460,24 @@ function closeVideoModal() {
   videoEl.pause();
   videoEl.src = '';
   overlay.classList.add('hidden');
+}
+
+async function deleteTrack() {
+  if (!currentId) return;
+  const t = tracks.find(x => x.id === currentId);
+  if (!t) return;
+  if (!confirm(`Delete "${t.title}"?\n\nThis removes the file from disk and the library entry.`)) return;
+
+  const audioEl = document.getElementById('player-audio');
+  audioEl.innerHTML = '';
+  if (!document.getElementById('video-overlay').classList.contains('hidden')) closeVideoModal();
+
+  const res = await fetch(`/api/tracks/${currentId}`, { method: 'DELETE' }).then(r => r.json()).catch(() => null);
+  if (!res || res.error) { alert('Delete failed: ' + (res && res.error)); return; }
+
+  currentId = null;
+  document.getElementById('player-panel').classList.add('hidden');
+  await Promise.all([loadStats(), loadFilters(), loadTracks()]);
 }
 
 async function saveTag() {
@@ -660,22 +679,52 @@ async function pollJob(jobId) {
   });
 }
 
+let jobsCache = {};
+
 async function refreshJobsList() {
   const jobs = await fetch('/api/jobs').then(r => r.json()).catch(() => []);
   const section = document.getElementById('jobs-section');
   const list = document.getElementById('jobs-list');
   if (!jobs.length) { section.style.display = 'none'; return; }
   section.style.display = 'block';
+  jobsCache = {};
+  jobs.forEach(j => { jobsCache[j.id] = j; });
   list.innerHTML = jobs.slice(0, 8).map(j => {
-    const icon = { done: '✓', error: '✗', running: '…', queued: '⋯' }[j.status] || '?';
     const label = j.status === 'done' ? `${j.track_count} track(s)` : j.status === 'error' ? 'failed' : j.status;
     const short = j.url.length > 50 ? j.url.slice(0, 48) + '…' : j.url;
+    const canRetry = j.status === 'done' || j.status === 'error';
+    const retryBtn = canRetry
+      ? `<button class="btn-secondary" style="padding:3px 8px;font-size:.7rem" onclick="retryJob('${j.id}')" title="Re-run this URL — already-downloaded items are skipped">↻ Retry</button>`
+      : '';
     return `<div class="job-row">
       <div class="job-status ${j.status}"></div>
       <div class="job-title" title="${esc(j.url)}">${esc(short)}</div>
       <div class="job-count">${label}</div>
+      ${retryBtn}
     </div>`;
   }).join('');
+}
+
+async function retryJob(jobId) {
+  const j = jobsCache[jobId];
+  if (!j) return;
+
+  document.getElementById('dl-submit').disabled = true;
+  document.getElementById('dl-progress').classList.add('visible');
+  document.getElementById('dl-log').textContent = '';
+  document.getElementById('dl-progress-bar').style.background = 'var(--accent)';
+
+  const res = await fetch('/api/download', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ url: j.url, audio_only: !!j.audio_only, playlist: null })
+  }).then(r => r.json());
+
+  activeJobId = res.job_id;
+  await pollJob(activeJobId);
+
+  document.getElementById('dl-submit').disabled = false;
+  Promise.all([loadStats(), loadFilters(), loadTracks()]);
 }
 </script>
 </body>
