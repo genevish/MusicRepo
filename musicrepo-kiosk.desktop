@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=MusicRepo Kiosk
+Comment=Launch Chromium in fullscreen kiosk mode pointed at the local player
+Exec=/bin/sh -c 'until curl -sf http://localhost:8765/ >/dev/null; do sleep 1; done; chromium-browser --kiosk --noerrdialogs --disable-infobars --no-first-run --check-for-update-interval=31536000 --start-fullscreen http://localhost:8765'
+X-GNOME-Autostart-enabled=true
