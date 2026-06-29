@@ -169,6 +169,38 @@
   .empty h2 { font-size: 1.2rem; margin-bottom: 8px; color: var(--text); }
   .empty code { background: var(--surface2); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; display: block; margin-top: 12px; }
 
+  /* Multi-select */
+  .card { position: relative; }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .list-row.selected { background: var(--surface2); }
+  .select-check { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; background: rgba(0,0,0,.55); border: 1.5px solid #fff; border-radius: 5px; cursor: pointer; z-index: 2; display: flex; align-items: center; justify-content: center; }
+  .select-check.checked { background: var(--accent); border-color: var(--accent); }
+  .select-check::after { content: '✓'; color: #fff; font-size: 14px; line-height: 1; display: none; font-weight: 700; }
+  .select-check.checked::after { display: block; }
+  .list-check { width: 18px; height: 18px; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .list-check.checked { background: var(--accent); border-color: var(--accent); }
+  .list-check::after { content: '✓'; color: #fff; font-size: 11px; line-height: 1; display: none; font-weight: 700; }
+  .list-check.checked::after { display: block; }
+
+  /* Floating bulk action bar */
+  .action-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--accent); border-radius: 12px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 50; }
+  .action-bar.hidden { display: none; }
+  .action-bar-count { font-size: 0.85rem; font-weight: 600; padding: 0 8px; color: var(--accent2); }
+  .action-bar-btn { background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.82rem; font-weight: 600; padding: 7px 12px; cursor: pointer; }
+  .action-bar-btn:hover { background: var(--accent2); }
+  .action-bar-btn.danger { background: var(--danger); }
+  .action-bar-btn.danger:hover { background: #dc2626; }
+  .action-bar-btn.neutral { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+
+  /* Player Prev/Next */
+  .player-nav { display: flex; gap: 6px; margin: 4px 0 10px; }
+  .player-nav button { flex: 1; padding: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.78rem; cursor: pointer; }
+  .player-nav button:hover { border-color: var(--accent); }
+  .player-nav button:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Updated list-view grid to include checkbox column */
+  .list-row, .list-header { grid-template-columns: 28px 48px 1fr 160px 80px 60px 50px !important; }
+
   /* Responsive */
   @media (max-width: 700px) {
     .player-panel { display: none !important; }
@@ -269,6 +301,7 @@
     <button class="view-btn active" id="btn-grid" onclick="setView('grid')">⊞ Grid</button>
     <button class="view-btn" id="btn-list" onclick="setView('list')">☰ List</button>
   </div>
+  <button class="dl-btn" onclick="playAll()" title="Play all visible tracks in order">▶ Play all</button>
 </div>
 
 <div class="main">
@@ -286,6 +319,10 @@
       </div>
       <div class="player-title" id="player-title">No track selected</div>
       <div class="player-artist" id="player-artist"></div>
+      <div class="player-nav">
+        <button id="btn-prev" onclick="playPrev()" title="Previous">⏮ Prev</button>
+        <button id="btn-next" onclick="playNext()" title="Next">Next ⏭</button>
+      </div>
       <div class="player-meta" id="player-meta"></div>
       <div class="edit-fields">
         <div class="edit-field"><label>Artist</label><input id="edit-artist" placeholder="Artist name"></div>
@@ -301,6 +338,14 @@
   </div>
 </div>
 
+<!-- Floating bulk action bar -->
+<div class="action-bar hidden" id="action-bar">
+  <span class="action-bar-count" id="action-bar-count">0 selected</span>
+  <button class="action-bar-btn" onclick="playSelected()">▶ Play selected</button>
+  <button class="action-bar-btn danger" onclick="deleteSelected()">🗑 Delete</button>
+  <button class="action-bar-btn neutral" onclick="clearSelection()">Clear</button>
+</div>
+
 <!-- Video modal overlay -->
 <div class="video-overlay hidden" id="video-overlay" onclick="if(event.target===this)closeVideoModal()">
   <div class="video-modal" id="video-modal">
@@ -314,6 +359,8 @@
 
 <script>
 let tracks = [], currentId = null, viewMode = 'grid';
+let selected = new Set();
+let playQueue = null;   // null → use the visible 'tracks' as the queue
 
 function fmt(secs) {
   if (!secs) return '?';
@@ -369,7 +416,8 @@ function renderLibrary() {
 
   if (viewMode === 'grid') {
     lib.innerHTML = `<div class="grid">${tracks.map(t => `
-      <div class="card${t.id === currentId ? ' active' : ''}" onclick="play('${t.id}')">
+      <div class="card${t.id === currentId ? ' active' : ''}${selected.has(t.id) ? ' selected' : ''}" onclick="play('${t.id}')">
+        <div class="select-check${selected.has(t.id) ? ' checked' : ''}" onclick="event.stopPropagation();toggleSelect('${t.id}')" title="Select"></div>
         ${thumb(t)}
         <div class="card-body">
           <div class="card-title">${esc(t.title)}</div>
@@ -381,9 +429,10 @@ function renderLibrary() {
       </div>`).join('')}</div>`;
   } else {
     lib.innerHTML = `
-      <div class="list-header"><div></div><div>Title</div><div>Artist</div><div>Genre</div><div>Duration</div><div>Type</div></div>
+      <div class="list-header"><div></div><div></div><div>Title</div><div>Artist</div><div>Genre</div><div>Duration</div><div>Type</div></div>
       <div class="list-view">${tracks.map(t => `
-        <div class="list-row${t.id === currentId ? ' active' : ''}" onclick="play('${t.id}')">
+        <div class="list-row${t.id === currentId ? ' active' : ''}${selected.has(t.id) ? ' selected' : ''}" onclick="play('${t.id}')">
+          <div class="list-check${selected.has(t.id) ? ' checked' : ''}" onclick="event.stopPropagation();toggleSelect('${t.id}')" title="Select"></div>
           ${thumb(t)}
           <div><div class="list-title">${esc(t.title)}</div></div>
           <div class="list-artist">${esc(t.artist || t.uploader || '')}</div>
@@ -398,7 +447,10 @@ function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 let currentSrc = '';
 
-function play(id) {
+function play(id, fromQueue = false) {
+  if (!fromQueue && playQueue && !playQueue.some(t => t.id === id)) {
+    playQueue = null;   // user picked something outside the active queue
+  }
   currentId = id;
   const t = tracks.find(x => x.id === id);
   if (!t) return;
@@ -443,10 +495,92 @@ function play(id) {
     openVideoModal();              // auto-open video modal
   } else {
     audioEl.innerHTML = `<audio controls autoplay src="${currentSrc}"></audio>`;
+    const a = audioEl.querySelector('audio');
+    if (a) a.addEventListener('ended', playNext);
   }
 
+  updatePlayerNav();
   document.getElementById('player-panel').classList.remove('hidden');
   renderLibrary();
+}
+
+function getQueue() { return playQueue || tracks; }
+
+function currentQueueIndex() {
+  return getQueue().findIndex(t => t.id === currentId);
+}
+
+function playNext() {
+  const q = getQueue();
+  const idx = currentQueueIndex();
+  if (idx >= 0 && idx + 1 < q.length) play(q[idx + 1].id, true);
+}
+
+function playPrev() {
+  const q = getQueue();
+  const idx = currentQueueIndex();
+  if (idx > 0) play(q[idx - 1].id, true);
+}
+
+function playAll() {
+  playQueue = null;
+  if (tracks.length) play(tracks[0].id, true);
+}
+
+function updatePlayerNav() {
+  const q = getQueue();
+  const idx = currentQueueIndex();
+  document.getElementById('btn-prev').disabled = idx <= 0;
+  document.getElementById('btn-next').disabled = idx < 0 || idx >= q.length - 1;
+}
+
+// ── Multi-select ──────────────────────────────────────────────────────────
+function toggleSelect(id) {
+  if (selected.has(id)) selected.delete(id); else selected.add(id);
+  renderLibrary();
+  renderActionBar();
+}
+
+function clearSelection() {
+  selected.clear();
+  renderLibrary();
+  renderActionBar();
+}
+
+function renderActionBar() {
+  const bar = document.getElementById('action-bar');
+  if (!selected.size) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  document.getElementById('action-bar-count').textContent = `${selected.size} selected`;
+}
+
+function playSelected() {
+  if (!selected.size) return;
+  const ordered = tracks.filter(t => selected.has(t.id));
+  if (!ordered.length) return;
+  playQueue = ordered;
+  play(ordered[0].id, true);
+}
+
+async function deleteSelected() {
+  if (!selected.size) return;
+  const ids = [...selected];
+  if (!confirm(`Delete ${ids.length} track(s)?\n\nThis removes the files from disk and the library entries.`)) return;
+
+  if (ids.includes(currentId)) {
+    const audioEl = document.getElementById('player-audio');
+    audioEl.innerHTML = '';
+    if (!document.getElementById('video-overlay').classList.contains('hidden')) closeVideoModal();
+    currentId = null;
+    document.getElementById('player-panel').classList.add('hidden');
+  }
+
+  for (const id of ids) {
+    await fetch(`/api/tracks/${id}`, { method: 'DELETE' }).catch(() => null);
+  }
+  selected.clear();
+  renderActionBar();
+  await Promise.all([loadStats(), loadFilters(), loadTracks()]);
 }
 
 function openVideoModal() {
@@ -523,6 +657,7 @@ document.getElementById('search').addEventListener('input', () => { clearTimeout
 ['filter-genre','filter-artist','filter-playlist','order'].forEach(id => document.getElementById(id).addEventListener('change', loadTracks));
 
 // Init
+document.getElementById('video-player').addEventListener('ended', playNext);
 Promise.all([loadStats(), loadFilters(), loadTracks()]);
 
 // ── Enrich metadata ───────────────────────────────────────────────────────────
