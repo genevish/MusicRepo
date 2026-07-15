@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategic Conquest</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #131a22;
+    --panel-border: #263241;
+    --text: #dbe7f2;
+    --dim: #7d92a6;
+    --p1: #3b82f6;
+    --p2: #e0453b;
+    --neutral: #c9a227;
+    --sea: #0d2b4a;
+    --sea-dim: #081826;
+    --land: #2f6d3a;
+    --land-dim: #17331b;
+    --accent: #f2c14e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: "Courier New", ui-monospace, monospace;
+    overflow: hidden;
+  }
+  button, select {
+    font-family: inherit;
+    background: #1b2530;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { background: #26323f; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); color: #1a1200; border-color: var(--accent); font-weight: bold; }
+  button.primary:hover { background: #ffd876; }
+  h1, h2, h3 { margin: 0 0 8px 0; }
+  a { color: var(--accent); }
+
+  /* ---- Setup screen ---- */
+  #setup-screen {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+  }
+  .setup-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 28px 34px; width: 460px; max-width: 92vw;
+  }
+  .setup-card h1 { color: var(--accent); letter-spacing: 2px; text-align: center; }
+  .setup-card .subtitle { text-align: center; color: var(--dim); margin-bottom: 20px; font-size: 13px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; margin-bottom: 4px; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .field select { width: 100%; }
+  .row2 { display: flex; gap: 10px; }
+  .row2 > div { flex: 1; }
+  #start-btn { width: 100%; padding: 10px; font-size: 15px; margin-top: 8px; }
+  .setup-note { font-size: 11px; color: var(--dim); margin-top: 14px; line-height: 1.5; }
+
+  /* ---- Game screen ---- */
+  #game-screen { display: none; height: 100%; flex-direction: column; }
+  #game-screen.active { display: flex; }
+  #top-bar {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--panel); border-bottom: 1px solid var(--panel-border);
+    padding: 8px 14px; flex-shrink: 0;
+  }
+  #top-bar .turn-indicator { font-weight: bold; }
+  #top-bar .turn-indicator.p1 { color: var(--p1); }
+  #top-bar .turn-indicator.p2 { color: var(--p2); }
+  #top-bar .spacer { flex: 1; }
+  #main-area { display: flex; flex: 1; min-height: 0; }
+  #map-canvas { background: var(--sea-dim); display: block; cursor: crosshair; }
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  #minimap { position: absolute; right: 10px; bottom: 10px; border: 1px solid var(--panel-border); background: #000; cursor: pointer; opacity: 0.9; }
+
+  #side-panel {
+    width: 280px; flex-shrink: 0; background: var(--panel); border-left: 1px solid var(--panel-border);
+    display: flex; flex-direction: column; padding: 12px; overflow-y: auto;
+  }
+  #side-panel h3 { color: var(--accent); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--panel-border); padding-bottom: 4px; }
+  .info-box { background: #0f151c; border: 1px solid var(--panel-border); border-radius: 4px; padding: 10px; margin-bottom: 12px; font-size: 13px; }
+  .stat-line { display: flex; justify-content: space-between; margin: 2px 0; }
+  .stat-line .k { color: var(--dim); }
+  .empty-hint { color: var(--dim); font-size: 12px; font-style: italic; }
+  #log-box { flex: 1; min-height: 100px; background: #0f151c; border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px; font-size: 11px; overflow-y: auto; }
+  #log-box div { margin-bottom: 3px; color: var(--dim); }
+  #log-box div.important { color: var(--text); }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .btn-row button { flex: 1; font-size: 12px; padding: 5px 6px; }
+
+  #end-turn-btn { padding: 8px 18px; font-weight: bold; }
+
+  /* ---- Overlays ---- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay-card {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 30px 40px; text-align: center; max-width: 420px;
+  }
+  .overlay-card h2 { color: var(--accent); font-size: 22px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP SCREEN ============ -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <h1>&#9873; STRATEGIC CONQUEST</h1>
+    <div class="subtitle">a browser homage to the 1984 Mac classic</div>
+
+    <div class="field">
+      <label>Opponent</label>
+      <select id="opp-select">
+        <option value="ai">Computer opponent</option>
+        <option value="human">Hotseat (2 players, same screen)</option>
+      </select>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Map size</label>
+        <select id="size-select">
+          <option value="small">Small (48x32)</option>
+          <option value="medium" selected>Medium (96x64)</option>
+          <option value="large">Large (124x96)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Terrain</label>
+        <select id="land-select">
+          <option value="wet">Wet (island-heavy)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="dry">Dry (more land)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field" id="difficulty-field">
+      <label>Computer difficulty</label>
+      <select id="diff-select">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+    </div>
+
+    <button id="start-btn" class="primary">Start Game</button>
+
+    <div class="setup-note">
+      Goal: capture every enemy city. Cities build one unit at a time; move an
+      Army or Artillery onto an undefended enemy/neutral city to capture it.
+      Fog of war hides the map until you explore it. See the in-game Help panel
+      for unit stats.
+    </div>
+  </div>
+</div>
+
+<!-- ============ GAME SCREEN ============ -->
+<div id="game-screen">
+  <div id="top-bar">
+    <div id="turn-indicator" class="turn-indicator">Turn 1 &mdash; Blue's move</div>
+    <div class="spacer"></div>
+    <button id="help-btn">Unit Guide</button>
+    <button id="end-turn-btn" class="primary">End Turn</button>
+  </div>
+  <div id="main-area">
+    <div id="canvas-wrap">
+      <canvas id="map-canvas"></canvas>
+      <canvas id="minimap" width="180" height="120"></canvas>
+    </div>
+    <div id="side-panel">
+      <h3>Selection</h3>
+      <div id="selection-box" class="info-box"><div class="empty-hint">Click a unit or city to select it.</div></div>
+      <h3>Log</h3>
+      <div id="log-box"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ OVERLAYS ============ -->
+<div id="handoff-overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <h2 id="handoff-title">Pass the device</h2>
+    <p id="handoff-text">It is now the other player's turn. Make sure Player 1 looks away.</p>
+    <button id="handoff-continue" class="primary">Continue</button>
+  </div>
+</div>
+
+<div id="gameover-overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <h2 id="gameover-title">Victory!</h2>
+    <p id="gameover-text"></p>
+    <button id="restart-btn" class="primary">Back to Setup</button>
+  </div>
+</div>
+
+<div id="help-overlay" class="overlay hidden">
+  <div class="overlay-card" style="max-width:620px; text-align:left;">
+    <h2 style="text-align:center;">Unit Guide</h2>
+    <div id="help-body" style="font-size:12px; max-height:60vh; overflow-y:auto;"></div>
+    <div style="text-align:center; margin-top:14px;">
+      <button id="help-close" class="primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================================
+   * DESIGN NOTE
+   * The original Strategic Conquest's exact production costs, attack/defense
+   * integers, and combat formula were never fully documented in any source
+   * reachable during research (fansites, Wikipedia summaries, and the
+   * scanned manual were all inaccessible). The unit roster, general rules
+   * (fog of war, fuel-limited aircraft, ship repair in port, veteran planes,
+   * two attacks/turn for battleship & artillery, damage reduces movement
+   * instead of instant destruction) are drawn from what secondary sources
+   * describe qualitatively. The specific numbers below are an original,
+   * balanced design filling that gap -- not transcribed stats.
+   * ========================================================================= */
+
+  const TILE_SEA = 0;
+  const TILE_LAND = 1;
+
+  const UNIT_DEFS = {
+    army:       { key:'army',       name:'Army',       symbol:'A', domain:'land', move:1, attack:2,  hp:2, range:1, vision:1, buildTurns:4,  fuel:0, capacity:0, cargoType:null, canCapture:true, attacksPerTurn:1 },
+    artillery:  { key:'artillery',  name:'Artillery',  symbol:'R', domain:'land', move:1, attack:4,  hp:2, range:2, vision:1, buildTurns:8,  fuel:0, capacity:0, cargoType:null, canCapture:true, attacksPerTurn:2, noCounter:true },
+    fighter:    { key:'fighter',    name:'Fighter',    symbol:'F', domain:'air',  move:8, attack:3,  hp:1, range:1, vision:3, buildTurns:6,  fuel:10, capacity:0, cargoType:null, veteranCapable:true, attacksPerTurn:1 },
+    helicopter: { key:'helicopter', name:'Helicopter', symbol:'H', domain:'air',  move:6, attack:5,  hp:2, range:1, vision:2, buildTurns:10, fuel:8, capacity:0, cargoType:null, veteranCapable:true, attacksPerTurn:1 },
+    bomber:     { key:'bomber',     name:'Bomber',     symbol:'B', domain:'air',  move:4, attack:10, hp:1, range:1, vision:2, buildTurns:14, fuel:6, capacity:0, cargoType:null, singleUse:true, attacksPerTurn:1 },
+    destroyer:  { key:'destroyer',  name:'Destroyer',  symbol:'D', domain:'sea',  move:4, attack:3,  hp:3, range:1, vision:2, buildTurns:6,  fuel:0, capacity:0, cargoType:null, detectsSubs:true, attacksPerTurn:1 },
+    submarine:  { key:'submarine',  name:'Submarine',  symbol:'S', domain:'sea',  move:3, attack:4,  hp:2, range:1, vision:1, buildTurns:8,  fuel:0, capacity:0, cargoType:null, stealth:true, attacksPerTurn:1 },
+    transport:  { key:'transport',  name:'Transport',  symbol:'T', domain:'sea',  move:3, attack:0,  hp:1, range:1, vision:1, buildTurns:5,  fuel:0, capacity:3, cargoType:'land', attacksPerTurn:1 },
+    carrier:    { key:'carrier',    name:'Carrier',    symbol:'C', domain:'sea',  move:3, attack:1,  hp:6, range:1, vision:2, buildTurns:16, fuel:0, capacity:4, cargoType:'air', attacksPerTurn:1 },
+    battleship: { key:'battleship', name:'Battleship', symbol:'Z', domain:'sea',  move:3, attack:8,  hp:8, range:2, vision:2, buildTurns:20, fuel:0, capacity:0, cargoType:null, attacksPerTurn:2 },
+  };
+  const UNIT_ORDER = ['army','artillery','fighter','helicopter','bomber','destroyer','submarine','transport','carrier','battleship'];
+
+  const LAND_FRACTIONS = { wet: 0.26, normal: 0.40, dry: 0.55 };
+  const MAP_SIZES = {
+    small:  { w: 48,  h: 32 },
+    medium: { w: 96,  h: 64 },
+    large:  { w: 124, h: 96 },
+  };
+  const TILE_PX = 15;
+  const MAX_LOG = 60;
+
+  /* ---------------------------------------------------------------------
+   * Small utilities
+   * ------------------------------------------------------------------- */
+  function randInt(n) { return Math.floor(Math.random() * n); }
+  function clampInt(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function chebyshev(x1, y1, x2, y2) { return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2)); }
+  function key(x, y) { return x + ',' + y; }
+
+  /* ---------------------------------------------------------------------
+   * Map generation: blob/drunkard-walk islands + cellular-automaton smoothing
+   * ------------------------------------------------------------------- */
+  function generateTerrain(w, h, landFrac) {
+    const land = Array.from({ length: h }, () => new Array(w).fill(false));
+    const targetLand = Math.floor(w * h * landFrac);
+    const numBlobs = clampInt(Math.floor((w * h) / 220), 5, 70);
+    const perBlob = Math.ceil(targetLand / numBlobs);
+    let placed = 0;
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+    for (let b = 0; b < numBlobs && placed < targetLand; b++) {
+      let x = randInt(w), y = randInt(h);
+      for (let s = 0; s < perBlob && placed < targetLand; s++) {
+        if (!land[y][x]) { land[y][x] = true; placed++; }
+        const d = dirs[randInt(8)];
+        x = clampInt(x + d[0], 0, w - 1);
+        y = clampInt(y + d[1], 0, h - 1);
+      }
+    }
+
+    for (let pass = 0; pass < 2; pass++) {
+      const copy = land.map(r => r.slice());
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let landN = 0, total = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+              total++;
+              if (copy[ny][nx]) landN++;
+            }
+          }
+          if (landN >= 5) land[y][x] = true;
+          else if (landN <= 2) land[y][x] = false;
+          else land[y][x] = copy[y][x];
+        }
+      }
+    }
+    return land;
+  }
+
+  function floodFillComponents(land, w, h) {
+    const seen = Array.from({ length: h }, () => new Array(w).fill(false));
+    const components = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!land[y][x] || seen[y][x]) continue;
+        const comp = [];
+        const stack = [[x, y]];
+        seen[y][x] = true;
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          comp.push([cx, cy]);
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx, ny = cy + dy;
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+              if (!land[ny][nx] || seen[ny][nx]) continue;
+              seen[ny][nx] = true;
+              stack.push([nx, ny]);
+            }
+          }
+        }
+        components.push(comp);
+      }
+    }
+    return components;
+  }
+
+  function buildMap(sizeKey, landKey) {
+    const { w, h } = MAP_SIZES[sizeKey];
+    const frac = LAND_FRACTIONS[landKey];
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const land = generateTerrain(w, h, frac);
+      const components = floodFillComponents(land, w, h).filter(c => c.length >= 4);
+      if (components.length < 2) continue;
+
+      // Cities: spread across components proportional to their size.
+      const cities = [];
+      let cid = 0;
+      for (const comp of components) {
+        const numCities = clampInt(Math.round(comp.length / 55), 1, 8);
+        const chosen = new Set();
+        let tries = 0;
+        while (chosen.size < numCities && tries < numCities * 20) {
+          tries++;
+          const idx = randInt(comp.length);
+          chosen.add(idx);
+        }
+        for (const idx of chosen) {
+          const [cx, cy] = comp[idx];
+          cities.push({ id: cid++, x: cx, y: cy, owner: 'neutral', building: null, progress: 0 });
+        }
+      }
+      if (cities.length < 2) continue;
+
+      // Pick two start cities as far apart as possible (greedy, cheap).
+      let bestPair = null, bestDist = -1;
+      const sampleA = cities.length > 40 ? cities.filter(() => Math.random() < 0.5) : cities;
+      for (const a of sampleA) {
+        for (const b of cities) {
+          if (a.id === b.id) continue;
+          const d = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+          if (d > bestDist) { bestDist = d; bestPair = [a, b]; }
+        }
+      }
+      if (!bestPair) continue;
+
+      bestPair[0].owner = 'p1';
+      bestPair[1].owner = 'p2';
+
+      const terrain = land;
+      return { w, h, terrain, cities };
+    }
+    // Fallback: should be exceedingly rare, but guarantee a playable map.
+    return buildFallbackMap(w, h);
+  }
+
+  function buildFallbackMap(w, h) {
+    const terrain = Array.from({ length: h }, () => new Array(w).fill(false));
+    for (let y = Math.floor(h*0.3); y < Math.floor(h*0.7); y++) {
+      for (let x = 0; x < w; x++) terrain[y][x] = true;
+    }
+    const cities = [
+      { id: 0, x: Math.floor(w*0.1), y: Math.floor(h*0.5), owner: 'p1', building: null, progress: 0 },
+      { id: 1, x: Math.floor(w*0.9), y: Math.floor(h*0.5), owner: 'p2', building: null, progress: 0 },
+    ];
+    return { w, h, terrain, cities };
+  }
+
+  /* ---------------------------------------------------------------------
+   * Game state
+   * ------------------------------------------------------------------- */
+  let G = null; // the active game state
+
+  function newGame(config) {
+    const map = buildMap(config.size, config.land);
+    const players = [
+      { id: 'p1', kind: 'human', color: '#3b82f6', name: 'Blue', explored: new Set(), visible: new Set() },
+      { id: 'p2', kind: config.opponent === 'human' ? 'human' : 'ai', color: '#e0453b', name: 'Red', explored: new Set(), visible: new Set() },
+    ];
+    const state = {
+      w: map.w, h: map.h, terrain: map.terrain, cities: map.cities,
+      units: [], nextUnitId: 1,
+      players, turnNumber: 1, currentPlayerIndex: 0,
+      difficulty: config.difficulty,
+      log: [],
+      camera: { x: 0, y: 0 },
+      selectedUnitId: null,
+      selectedCityId: null,
+      gameOver: false,
+    };
+    // Starting garrison: one Army in each player's home city.
+    for (const c of state.cities) {
+      if (c.owner === 'p1' || c.owner === 'p2') {
+        spawnUnit(state, 'army', c.owner, c.x, c.y);
+      }
+    }
+    return state;
+  }
+
+  function terrainAt(s, x, y) {
+    if (x < 0 || y < 0 || x >= s.w || y >= s.h) return null;
+    return s.terrain[y][x] ? TILE_LAND : TILE_SEA;
+  }
+  function cityAt(s, x, y) {
+    for (const c of s.cities) if (c.x === x && c.y === y) return c;
+    return null;
+  }
+  function unitAt(s, x, y) {
+    for (const u of s.units) if (!u.embarked && u.x === x && u.y === y) return u;
+    return null;
+  }
+  function playerOf(s, id) { return s.players.find(p => p.id === id); }
+  function otherPlayerId(id) { return id === 'p1' ? 'p2' : 'p1'; }
+
+  function spawnUnit(s, typeKey, owner, x, y) {
+    const def = UNIT_DEFS[typeKey];
+    const u = {
+      id: s.nextUnitId++, type: typeKey, owner, x, y,
+      hp: def.hp, maxHp: def.hp, attack: def.attack,
+      movesLeft: def.move, attacksLeft: def.attacksPerTurn,
+      fuel: def.fuel > 0 ? def.fuel : null,
+      cargo: [], embarked: false, veteran: false,
+    };
+    s.units.push(u);
+    return u;
+  }
+
+  function log(s, msg, important) {
+    s.log.push({ msg, important: !!important, turn: s.turnNumber });
+    if (s.log.length > MAX_LOG) s.log.shift();
+  }
+
+  /* ---------------------------------------------------------------------
+   * Fog of war
+   * ------------------------------------------------------------------- */
+  function recomputeVisibility(s, player) {
+    const vis = new Set();
+    for (const u of s.units) {
+      if (u.owner !== player.id || u.embarked) continue;
+      const def = UNIT_DEFS[u.type];
+      for (let dy = -def.vision; dy <= def.vision; dy++) {
+        for (let dx = -def.vision; dx <= def.vision; dx++) {
+          const nx = u.x + dx, ny = u.y + dy;
+          if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) <= def.vision) vis.add(key(nx, ny));
+        }
+      }
+    }
+    for (const c of s.cities) {
+      if (c.owner !== player.id) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = c.x + dx, ny = c.y + dy;
+          if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+          vis.add(key(nx, ny));
+        }
+      }
+    }
+    player.visible = vis;
+    for (const k of vis) player.explored.add(k);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Movement / pathing
+   * ------------------------------------------------------------------- */
+  function seaPassable(s, x, y, owner) {
+    const t = terrainAt(s, x, y);
+    if (t === TILE_SEA) return true;
+    if (t === TILE_LAND) {
+      const c = cityAt(s, x, y);
+      return !!c && c.owner !== otherPlayerId(owner);
+    }
+    return false;
+  }
+  function landPassable(s, x, y) {
+    return terrainAt(s, x, y) === TILE_LAND;
+  }
+  function tilePassableForDomain(s, x, y, domain, owner) {
+    if (domain === 'air') return terrainAt(s, x, y) !== null;
+    if (domain === 'sea') return seaPassable(s, x, y, owner);
+    if (domain === 'land') return landPassable(s, x, y);
+    return false;
+  }
+
+  // BFS reachable tiles within movesLeft, stopping at (but including) the
+  // first occupied tile in each direction (can't pass through units).
+  function reachableTiles(s, unit) {
+    const def = UNIT_DEFS[unit.type];
+    const domain = def.domain;
+    const start = key(unit.x, unit.y);
+    const dist = new Map([[start, 0]]);
+    const queue = [[unit.x, unit.y, 0]];
+    const result = new Map();
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    while (queue.length) {
+      const [cx, cy, d] = queue.shift();
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+        const nd = d + 1;
+        if (nd > unit.movesLeft) continue;
+        const k = key(nx, ny);
+        if (dist.has(k) && dist.get(k) <= nd) continue;
+        if (!tilePassableForDomain(s, nx, ny, domain, unit.owner)) continue;
+        const occupant = unitAt(s, nx, ny);
+        dist.set(k, nd);
+        if (!occupant) {
+          result.set(k, { x: nx, y: ny, cost: nd });
+          queue.push([nx, ny, nd]);
+        }
+        // occupied tiles block further passage but are not "reachable" moves
+      }
+    }
+    return result;
+  }
+
+  function attackableTargets(s, unit) {
+    const def = UNIT_DEFS[unit.type];
+    const targets = [];
+    for (let dy = -def.range; dy <= def.range; dy++) {
+      for (let dx = -def.range; dx <= def.range; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = unit.x + dx, ny = unit.y + dy;
+        if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) > def.range) continue;
+        const occupant = unitAt(s, nx, ny);
+        if (occupant && occupant.owner !== unit.owner) {
+          targets.push({ x: nx, y: ny, unit: occupant });
+        }
+      }
+    }
+    return targets;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Combat
+   * ------------------------------------------------------------------- */
+  function defensePower(s, defender) {
+    const onCity = !!cityAt(s, defender.x, defender.y);
+    return defender.hp + (onCity ? 1 : 0);
+  }
+
+  function destroyUnit(s, unit) {
+    unit.dead = true;
+    s.units = s.units.filter(u => u !== unit);
+  }
+
+  function resolveAttack(s, attacker, defender) {
+    const atkDef = UNIT_DEFS[attacker.type];
+    const atkPower = attacker.attack;
+    const defPower = defensePower(s, defender);
+    const winProb = atkPower / (atkPower + defPower);
+    const attackerWins = Math.random() < winProb;
+    const targetCity = cityAt(s, defender.x, defender.y);
+
+    if (attackerWins) {
+      defender.hp -= 1;
+      if (defender.hp <= 0) {
+        log(s, `${nameOf(attacker)} destroyed ${nameOf(defender)}.`, true);
+        destroyUnit(s, defender);
+        if (atkDef.canCapture || (targetCity && atkDef.domain !== 'sea')) {
+          // Land forces occupy the now-empty tile; if it is a city, capture it.
+          if (atkDef.domain === 'land') {
+            moveUnitTo(s, attacker, defender.x, defender.y, true);
+          }
+        }
+      } else {
+        log(s, `${nameOf(attacker)} damaged ${nameOf(defender)}.`);
+      }
+    } else {
+      log(s, `${nameOf(defender)} repelled an attack from ${nameOf(attacker)}.`);
+      if (!atkDef.noCounter) {
+        attacker.hp -= 1;
+        if (attacker.hp <= 0) {
+          log(s, `${nameOf(attacker)} was destroyed in the attack.`, true);
+          destroyUnit(s, attacker);
+        }
+      }
+    }
+
+    if (attacker.dead !== true && atkDef.singleUse) {
+      log(s, `${nameOf(attacker)} expended itself in the strike.`);
+      destroyUnit(s, attacker);
+    } else if (attacker.dead !== true && atkDef.veteranCapable && attackerWins && !attacker.veteran && Math.random() < 0.3) {
+      attacker.veteran = true;
+      attacker.attack += 1;
+      log(s, `${nameOf(attacker)} gained veteran status!`, true);
+    }
+  }
+
+  function nameOf(unit) {
+    const def = UNIT_DEFS[unit.type];
+    const side = unit.owner === 'p1' ? 'Blue' : 'Red';
+    return `${side} ${def.name}${unit.veteran ? ' (Vet)' : ''}`;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Movement execution (handles capture / load / unload)
+   * ------------------------------------------------------------------- */
+  function moveUnitTo(s, unit, x, y, freeOfCost) {
+    const def = UNIT_DEFS[unit.type];
+    if (!freeOfCost) {
+      const dx = Math.abs(unit.x - x), dy = Math.abs(unit.y - y);
+      const steps = Math.max(dx, dy);
+      unit.movesLeft = Math.max(0, unit.movesLeft - steps);
+    }
+    unit.x = x; unit.y = y;
+
+    const c = cityAt(s, x, y);
+    if (c && def.canCapture && c.owner !== unit.owner) {
+      const wasNeutral = c.owner === 'neutral';
+      c.owner = unit.owner;
+      c.building = null;
+      c.progress = 0;
+      log(s, `${nameOf(unit)} captured ${wasNeutral ? 'a neutral' : 'an enemy'} city!`, true);
+      checkWinCondition(s);
+    }
+  }
+
+  // Finds a tile to place a freshly-built unit: the city tile itself if free,
+  // otherwise the nearest free adjacent tile that fits the unit's domain.
+  // Returns null if the city is fully boxed in (production then waits).
+  function findSpawnSpot(s, city) {
+    const def = UNIT_DEFS[city.building];
+    if (!unitAt(s, city.x, city.y)) return { x: city.x, y: city.y };
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (const [dx, dy] of dirs) {
+      const nx = city.x + dx, ny = city.y + dy;
+      if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+      if (unitAt(s, nx, ny)) continue;
+      if (!tilePassableForDomain(s, nx, ny, def.domain, city.owner)) continue;
+      return { x: nx, y: ny };
+    }
+    return null;
+  }
+
+  function tryMoveOrAct(s, unit, tx, ty) {
+    const def = UNIT_DEFS[unit.type];
+    if (unit.movesLeft <= 0 && unit.attacksLeft <= 0) return false;
+
+    const occupant = unitAt(s, tx, ty);
+    const dist = chebyshev(unit.x, unit.y, tx, ty);
+
+    // 1) Attack an enemy within range.
+    if (occupant && occupant.owner !== unit.owner && dist <= def.range && unit.attacksLeft > 0) {
+      unit.attacksLeft -= 1;
+      resolveAttack(s, unit, occupant);
+      return true;
+    }
+
+    // 2) Load friendly cargo from an adjacent tile.
+    if (def.capacity > 0 && occupant && occupant.owner === unit.owner && dist === 1 &&
+        UNIT_DEFS[occupant.type].domain === def.cargoType && unit.cargo.length < def.capacity) {
+      occupant.embarked = true;
+      unit.cargo.push(occupant);
+      unit.movesLeft = Math.max(0, unit.movesLeft - 1);
+      log(s, `${nameOf(occupant)} boarded ${nameOf(unit)}.`);
+      return true;
+    }
+
+    // 3) Unload cargo onto an adjacent empty compatible tile.
+    if (def.capacity > 0 && !occupant && unit.cargo.length > 0 && dist === 1 &&
+        tilePassableForDomain(s, tx, ty, UNIT_DEFS[unit.cargo[0].type].domain, unit.owner)) {
+      const cargoUnit = unit.cargo.shift();
+      cargoUnit.embarked = false;
+      cargoUnit.x = tx; cargoUnit.y = ty;
+      cargoUnit.movesLeft = 0;
+      unit.movesLeft = Math.max(0, unit.movesLeft - 1);
+      log(s, `${nameOf(cargoUnit)} disembarked from ${nameOf(unit)}.`);
+      const c = cityAt(s, tx, ty);
+      if (c && UNIT_DEFS[cargoUnit.type].canCapture && c.owner !== cargoUnit.owner) {
+        moveUnitTo(s, cargoUnit, tx, ty, true);
+      }
+      return true;
+    }
+
+    // 4) Plain move to an empty, reachable tile.
+    if (!occupant) {
+      const reach = reachableTiles(s, unit);
+      const r = reach.get(key(tx, ty));
+      if (r) { moveUnitTo(s, unit, tx, ty, false); return true; }
+    }
+    return false;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Turn engine
+   * ------------------------------------------------------------------- */
+  function beginTurnProcessing(s, player) {
+    // Production, repair, refuel/crash, reset action points.
+    for (const c of s.cities) {
+      if (c.owner !== player.id) continue;
+      if (c.building) {
+        c.progress += 1;
+        const need = UNIT_DEFS[c.building].buildTurns * (s.difficulty === 'hard' && player.kind === 'ai' ? 0.75 : 1) * (s.difficulty === 'easy' && player.kind === 'ai' ? 1.25 : 1);
+        if (c.progress >= need) {
+          const spot = findSpawnSpot(s, c);
+          if (spot) {
+            spawnUnit(s, c.building, player.id, spot.x, spot.y);
+            log(s, `${player.name} city built a ${UNIT_DEFS[c.building].name}.`, player.kind === 'human');
+            c.progress = 0;
+          } else {
+            c.progress = need; // hold the finished unit until a tile opens up nearby
+          }
+        }
+      }
+    }
+    for (const u of s.units) {
+      if (u.owner !== player.id || u.embarked) continue;
+      const def = UNIT_DEFS[u.type];
+      const onFriendlyCity = (() => { const c = cityAt(s, u.x, u.y); return c && c.owner === u.owner; })();
+      if (u.hp < def.hp && onFriendlyCity) u.hp += 1;
+      if (def.fuel > 0) {
+        if (onFriendlyCity) { u.fuel = def.fuel; }
+        else {
+          u.fuel -= 1;
+          if (u.fuel < 0) {
+            log(s, `${nameOf(u)} ran out of fuel and crashed!`, true);
+            destroyUnit(s, u);
+            continue;
+          }
+        }
+      }
+      u.movesLeft = def.move;
+      u.attacksLeft = def.attacksPerTurn;
+    }
+    for (const u of s.units) {
+      if (u.embarked) continue;
+      for (const cargoUnit of u.cargo) {
+        const def = UNIT_DEFS[cargoUnit.type];
+        if (def.fuel > 0) cargoUnit.fuel = def.fuel;
+      }
+    }
+    recomputeVisibility(s, player);
+  }
+
+  function checkWinCondition(s) {
+    if (s.gameOver) return;
+    for (const pid of ['p1', 'p2']) {
+      const ownsCity = s.cities.some(c => c.owner === pid);
+      if (!ownsCity) {
+        s.gameOver = true;
+        s.winner = otherPlayerId(pid);
+        return;
+      }
+    }
+  }
+
+  function advanceToNextPlayer(s) {
+    s.currentPlayerIndex = (s.currentPlayerIndex + 1) % s.players.length;
+    if (s.currentPlayerIndex === 0) s.turnNumber += 1;
+    const player = s.players[s.currentPlayerIndex];
+    beginTurnProcessing(s, player);
+    s.selectedUnitId = null;
+    s.selectedCityId = null;
+    if (s.gameOver) return;
+    if (player.kind === 'ai') {
+      runAI(s, player);
+      checkWinCondition(s);
+      advanceToNextPlayer(s);
+    }
+  }
+
+  /* ---------------------------------------------------------------------
+   * Simple heuristic AI
+   * ------------------------------------------------------------------- */
+  function findNearestTargetCity(s, unit) {
+    // BFS over land tiles from unit position, looking for a city not owned by unit.owner.
+    const startKey = key(unit.x, unit.y);
+    const visited = new Set([startKey]);
+    const queue = [[unit.x, unit.y, []]];
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    let iterations = 0;
+    while (queue.length && iterations < 6000) {
+      iterations++;
+      const [cx, cy, path] = queue.shift();
+      const c = cityAt(s, cx, cy);
+      if (c && c.owner !== unit.owner && path.length > 0) return path;
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+        const k = key(nx, ny);
+        if (visited.has(k)) continue;
+        if (terrainAt(s, nx, ny) !== TILE_LAND) continue;
+        const occ = unitAt(s, nx, ny);
+        if (occ && occ.owner === unit.owner) continue;
+        visited.add(k);
+        queue.push([nx, ny, path.concat([[nx, ny]])]);
+      }
+    }
+    return null;
+  }
+
+  function stepUnitAlongPath(s, unit, path) {
+    let steps = 0;
+    while (unit.movesLeft > 0 && steps < path.length) {
+      const [nx, ny] = path[steps];
+      const occ = unitAt(s, nx, ny);
+      if (occ && occ.owner !== unit.owner) {
+        if (unit.attacksLeft > 0) { unit.attacksLeft -= 1; resolveAttack(s, unit, occ); }
+        return;
+      }
+      if (occ) return;
+      moveUnitTo(s, unit, nx, ny, false);
+      steps++;
+    }
+  }
+
+  function runAI(s, player) {
+    // Production
+    for (const c of s.cities) {
+      if (c.owner !== player.id) continue;
+      if (!c.building) {
+        const weights = c.progressStarted ? null : null;
+        const pickWeights = [
+          ['army', 45], ['transport', 12], ['destroyer', 10], ['fighter', 12],
+          ['artillery', 6], ['battleship', 4], ['carrier', 4], ['submarine', 4],
+          ['helicopter', 2], ['bomber', 1],
+        ];
+        const total = pickWeights.reduce((a, [, w]) => a + w, 0);
+        let r = Math.random() * total;
+        let chosen = 'army';
+        for (const [k, w] of pickWeights) { if (r < w) { chosen = k; break; } r -= w; }
+        c.building = chosen;
+        c.progress = 0;
+      }
+    }
+
+    const myUnits = s.units.filter(u => u.owner === player.id && !u.embarked);
+    for (const unit of myUnits) {
+      if (unit.movesLeft <= 0 && unit.attacksLeft <= 0) continue;
+      const def = UNIT_DEFS[unit.type];
+
+      // Attack any enemy already in range first.
+      const targets = attackableTargets(s, unit);
+      if (targets.length > 0 && unit.attacksLeft > 0) {
+        targets.sort((a, b) => a.unit.hp - b.unit.hp);
+        unit.attacksLeft -= 1;
+        resolveAttack(s, unit, targets[0].unit);
+        continue;
+      }
+
+      if (def.domain === 'land') {
+        const path = findNearestTargetCity(s, unit);
+        if (path) stepUnitAlongPath(s, unit, path);
+      } else if (def.domain === 'sea' || def.domain === 'air') {
+        // Move toward the nearest enemy/neutral city in a straight-ish line.
+        let target = null, bestDist = Infinity;
+        for (const c of s.cities) {
+          if (c.owner === player.id) continue;
+          const d = chebyshev(unit.x, unit.y, c.x, c.y);
+          if (d < bestDist) { bestDist = d; target = c; }
+        }
+        if (target) {
+          const reach = reachableTiles(s, unit);
+          let best = null, bestD = chebyshev(unit.x, unit.y, target.x, target.y);
+          for (const r of reach.values()) {
+            const d = chebyshev(r.x, r.y, target.x, target.y);
+            if (d < bestD) { bestD = d; best = r; }
+          }
+          if (best) moveUnitTo(s, unit, best.x, best.y, false);
+        }
+      }
+    }
+  }
+
+  /* =========================================================================
+   * RENDERING
+   * ========================================================================= */
+  const canvas = document.getElementById('map-canvas');
+  const ctx = canvas.getContext('2d');
+  const minimap = document.getElementById('minimap');
+  const mctx = minimap.getContext('2d');
+  const canvasWrap = document.getElementById('canvas-wrap');
+
+  function resizeCanvas() {
+    canvas.width = canvasWrap.clientWidth;
+    canvas.height = canvasWrap.clientHeight;
+  }
+  window.addEventListener('resize', () => { resizeCanvas(); render(); });
+
+  function activePlayer() { return G.players[G.currentPlayerIndex]; }
+
+  function clampCamera() {
+    const tilesX = Math.floor(canvas.width / TILE_PX);
+    const tilesY = Math.floor(canvas.height / TILE_PX);
+    G.camera.x = clampInt(G.camera.x, 0, Math.max(0, G.w - tilesX));
+    G.camera.y = clampInt(G.camera.y, 0, Math.max(0, G.h - tilesY));
+  }
+
+  function render() {
+    if (!G) return;
+    clampCamera();
+    const player = activePlayer();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const tilesX = Math.ceil(canvas.width / TILE_PX) + 1;
+    const tilesY = Math.ceil(canvas.height / TILE_PX) + 1;
+
+    for (let ty = 0; ty < tilesY; ty++) {
+      const y = G.camera.y + ty;
+      if (y >= G.h) continue;
+      for (let tx = 0; tx < tilesX; tx++) {
+        const x = G.camera.x + tx;
+        if (x >= G.w) continue;
+        const k = key(x, y);
+        const explored = player.explored.has(k);
+        if (!explored) continue;
+        const visibleNow = player.visible.has(k);
+        const terrain = terrainAt(G, x, y);
+        const px = tx * TILE_PX, py = ty * TILE_PX;
+        ctx.fillStyle = terrain === TILE_LAND
+          ? (visibleNow ? '#2f6d3a' : '#17331b')
+          : (visibleNow ? '#0d2b4a' : '#081826');
+        ctx.fillRect(px, py, TILE_PX, TILE_PX);
+      }
+    }
+
+    // Cities
+    for (const c of G.cities) {
+      const k = key(c.x, c.y);
+      if (!player.explored.has(k)) continue;
+      const tx = c.x - G.camera.x, ty = c.y - G.camera.y;
+      if (tx < 0 || ty < 0 || tx * TILE_PX > canvas.width || ty * TILE_PX > canvas.height) continue;
+      const px = tx * TILE_PX, py = ty * TILE_PX;
+      const visibleNow = player.visible.has(k);
+      ctx.fillStyle = c.owner === 'p1' ? '#3b82f6' : c.owner === 'p2' ? '#e0453b' : '#c9a227';
+      ctx.globalAlpha = visibleNow ? 1 : 0.55;
+      ctx.beginPath();
+      ctx.arc(px + TILE_PX/2, py + TILE_PX/2, TILE_PX*0.38, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (visibleNow && c.owner === player.id && c.building) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        const need = UNIT_DEFS[c.building].buildTurns;
+        const frac = Math.min(1, c.progress / need);
+        ctx.strokeRect(px+1, py + TILE_PX - 3, (TILE_PX-2) * frac, 2);
+      }
+    }
+
+    // Units (only currently visible ones, plus always the player's own)
+    for (const u of G.units) {
+      if (u.embarked) continue;
+      const isMine = u.owner === player.id;
+      const k = key(u.x, u.y);
+      if (!isMine && !player.visible.has(k)) continue;
+      if (!isMine && UNIT_DEFS[u.type].stealth) continue; // subs invisible unless caught elsewhere
+      const tx = u.x - G.camera.x, ty = u.y - G.camera.y;
+      if (tx < 0 || ty < 0 || tx * TILE_PX > canvas.width || ty * TILE_PX > canvas.height) continue;
+      const px = tx * TILE_PX, py = ty * TILE_PX;
+      ctx.fillStyle = u.owner === 'p1' ? '#3b82f6' : '#e0453b';
+      ctx.fillRect(px + 2, py + 2, TILE_PX - 4, TILE_PX - 4);
+      ctx.strokeStyle = (G.selectedUnitId === u.id) ? '#f2c14e' : '#000';
+      ctx.lineWidth = (G.selectedUnitId === u.id) ? 2 : 1;
+      ctx.strokeRect(px + 2, py + 2, TILE_PX - 4, TILE_PX - 4);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(UNIT_DEFS[u.type].symbol, px + TILE_PX/2, py + TILE_PX/2 + 1);
+    }
+
+    // Selection overlays: reachable & attackable tiles
+    if (G.selectedUnitId != null) {
+      const unit = G.units.find(u => u.id === G.selectedUnitId);
+      if (unit && unit.owner === player.id) {
+        const reach = reachableTiles(G, unit);
+        ctx.fillStyle = 'rgba(242,193,78,0.25)';
+        for (const r of reach.values()) {
+          const tx = r.x - G.camera.x, ty = r.y - G.camera.y;
+          if (tx < 0 || ty < 0) continue;
+          ctx.fillRect(tx*TILE_PX, ty*TILE_PX, TILE_PX, TILE_PX);
+        }
+        const atk = attackableTargets(G, unit);
+        ctx.fillStyle = 'rgba(224,69,59,0.35)';
+        for (const t of atk) {
+          const tx = t.x - G.camera.x, ty = t.y - G.camera.y;
+          if (tx < 0 || ty < 0) continue;
+          ctx.fillRect(tx*TILE_PX, ty*TILE_PX, TILE_PX, TILE_PX);
+        }
+      }
+    }
+
+    renderMinimap(player);
+  }
+
+  function renderMinimap(player) {
+    const scaleX = minimap.width / G.w, scaleY = minimap.height / G.h;
+    mctx.fillStyle = '#000';
+    mctx.fillRect(0, 0, minimap.width, minimap.height);
+    for (let y = 0; y < G.h; y++) {
+      for (let x = 0; x < G.w; x++) {
+        const k = key(x, y);
+        if (!player.explored.has(k)) continue;
+        mctx.fillStyle = terrainAt(G, x, y) === TILE_LAND ? '#2f6d3a' : '#0d2b4a';
+        mctx.fillRect(x*scaleX, y*scaleY, Math.ceil(scaleX), Math.ceil(scaleY));
+      }
+    }
+    for (const c of G.cities) {
+      if (!player.explored.has(key(c.x, c.y))) continue;
+      mctx.fillStyle = c.owner === 'p1' ? '#3b82f6' : c.owner === 'p2' ? '#e0453b' : '#c9a227';
+      mctx.fillRect(c.x*scaleX-1, c.y*scaleY-1, 3, 3);
+    }
+    const tilesX = Math.floor(canvas.width / TILE_PX);
+    const tilesY = Math.floor(canvas.height / TILE_PX);
+    mctx.strokeStyle = '#fff';
+    mctx.strokeRect(G.camera.x*scaleX, G.camera.y*scaleY, tilesX*scaleX, tilesY*scaleY);
+  }
+
+  /* =========================================================================
+   * UI wiring
+   * ========================================================================= */
+  const selectionBox = document.getElementById('selection-box');
+  const logBox = document.getElementById('log-box');
+  const turnIndicator = document.getElementById('turn-indicator');
+
+  function renderLog() {
+    logBox.innerHTML = '';
+    for (let i = G.log.length - 1; i >= 0; i--) {
+      const entry = G.log[i];
+      const div = document.createElement('div');
+      if (entry.important) div.className = 'important';
+      div.textContent = `[T${entry.turn}] ${entry.msg}`;
+      logBox.appendChild(div);
+    }
+  }
+
+  function renderSelection() {
+    const player = activePlayer();
+    if (G.selectedUnitId == null && G.selectedCityId == null) {
+      selectionBox.innerHTML = '<div class="empty-hint">Click a unit or city to select it.</div>';
+      return;
+    }
+    if (G.selectedUnitId == null && G.selectedCityId != null) {
+      const city = G.cities.find(c => c.id === G.selectedCityId);
+      if (!city || city.owner !== player.id) { G.selectedCityId = null; selectionBox.innerHTML = '<div class="empty-hint">Click a unit or city to select it.</div>'; return; }
+      selectionBox.innerHTML = '';
+      appendCityPanel(city);
+      return;
+    }
+    const unit = G.units.find(u => u.id === G.selectedUnitId);
+    if (!unit) { G.selectedUnitId = null; selectionBox.innerHTML = '<div class="empty-hint">Click a unit or city to select it.</div>'; return; }
+    const def = UNIT_DEFS[unit.type];
+    let html = `<div class="stat-line"><span class="k">Unit</span><span>${def.name}${unit.veteran ? ' (Veteran)' : ''}</span></div>`;
+    html += `<div class="stat-line"><span class="k">Owner</span><span>${unit.owner === 'p1' ? 'Blue' : 'Red'}</span></div>`;
+    html += `<div class="stat-line"><span class="k">Strength</span><span>${unit.hp} / ${def.hp}</span></div>`;
+    html += `<div class="stat-line"><span class="k">Attack</span><span>${unit.attack}</span></div>`;
+    html += `<div class="stat-line"><span class="k">Moves left</span><span>${unit.movesLeft} / ${def.move}</span></div>`;
+    html += `<div class="stat-line"><span class="k">Attacks left</span><span>${unit.attacksLeft} / ${def.attacksPerTurn}</span></div>`;
+    if (def.fuel > 0) html += `<div class="stat-line"><span class="k">Fuel</span><span>${unit.fuel} / ${def.fuel}</span></div>`;
+    if (def.capacity > 0) html += `<div class="stat-line"><span class="k">Cargo</span><span>${unit.cargo.length} / ${def.capacity}</span></div>`;
+    selectionBox.innerHTML = html;
+
+    const c = cityAt(G, unit.x, unit.y);
+    if (c && c.owner === player.id && unit.owner === player.id) {
+      appendCityPanel(c);
+    }
+  }
+
+  function appendCityPanel(c) {
+    const box = document.createElement('div');
+    box.className = 'info-box';
+    let html = `<div class="stat-line"><span class="k">City</span><span>${c.owner === 'p1' ? 'Blue' : 'Red'}-owned</span></div>`;
+    html += `<label style="font-size:11px;color:var(--dim);">Producing:</label>`;
+    html += `<select id="city-build-select" style="width:100%;margin-top:4px;">`;
+    html += `<option value="">(idle)</option>`;
+    for (const uk of UNIT_ORDER) {
+      const d = UNIT_DEFS[uk];
+      html += `<option value="${uk}" ${c.building === uk ? 'selected' : ''}>${d.name} (${d.buildTurns}t)</option>`;
+    }
+    html += `</select>`;
+    if (c.building) {
+      const need = UNIT_DEFS[c.building].buildTurns;
+      html += `<div style="font-size:11px;color:var(--dim);margin-top:6px;">Progress: ${c.progress} / ${need} turns</div>`;
+    }
+    box.innerHTML = html;
+    selectionBox.appendChild(box);
+    document.getElementById('city-build-select').addEventListener('change', (e) => {
+      const v = e.target.value;
+      c.building = v || null;
+      c.progress = 0;
+      render();
+    });
+  }
+
+  function updateTurnIndicator() {
+    const player = activePlayer();
+    turnIndicator.textContent = `Turn ${G.turnNumber} — ${player.name}'s move`;
+    turnIndicator.className = 'turn-indicator ' + player.id;
+  }
+
+  function handleTileClick(x, y) {
+    const player = activePlayer();
+    if (player.kind !== 'human') return;
+    const occupant = unitAt(G, x, y);
+    const cityHere = cityAt(G, x, y);
+
+    if (G.selectedUnitId == null) {
+      if (occupant && occupant.owner === player.id) {
+        G.selectedUnitId = occupant.id;
+        G.selectedCityId = null;
+      } else if (cityHere && cityHere.owner === player.id) {
+        G.selectedCityId = cityHere.id;
+        G.selectedUnitId = null;
+      } else {
+        G.selectedUnitId = null;
+        G.selectedCityId = null;
+      }
+      render(); renderSelection();
+      return;
+    }
+
+    const unit = G.units.find(u => u.id === G.selectedUnitId);
+    if (!unit) { G.selectedUnitId = null; render(); renderSelection(); return; }
+
+    if (unit.x === x && unit.y === y) {
+      G.selectedUnitId = null;
+      render(); renderSelection();
+      return;
+    }
+
+    if (occupant && occupant.owner === player.id && UNIT_DEFS[occupant.type].domain !== UNIT_DEFS[unit.type].cargoType) {
+      // Switch selection to the other friendly unit instead of acting.
+      G.selectedUnitId = occupant.id;
+      render(); renderSelection();
+      return;
+    }
+
+    const acted = tryMoveOrAct(G, unit, x, y);
+    if (acted) {
+      checkWinCondition(G);
+      if (G.gameOver) { showGameOver(); return; }
+      if (unit.dead || unit.movesLeft <= 0 && unit.attacksLeft <= 0) G.selectedUnitId = null;
+    } else if (!occupant && cityHere && cityHere.owner === player.id) {
+      // Out of reach for the selected unit: fall back to selecting the city itself.
+      G.selectedUnitId = null;
+      G.selectedCityId = cityHere.id;
+    }
+    render(); renderSelection(); renderLog();
+  }
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const x = G.camera.x + Math.floor(px / TILE_PX);
+    const y = G.camera.y + Math.floor(py / TILE_PX);
+    if (x < 0 || y < 0 || x >= G.w || y >= G.h) return;
+    handleTileClick(x, y);
+  });
+
+  minimap.addEventListener('click', (e) => {
+    const rect = minimap.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const x = Math.floor((px / minimap.width) * G.w);
+    const y = Math.floor((py / minimap.height) * G.h);
+    const tilesX = Math.floor(canvas.width / TILE_PX);
+    const tilesY = Math.floor(canvas.height / TILE_PX);
+    G.camera.x = x - Math.floor(tilesX/2);
+    G.camera.y = y - Math.floor(tilesY/2);
+    render();
+  });
+
+  // Camera panning: drag with right button or arrow keys / WASD.
+  let dragging = false, dragStart = null, camStart = null;
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 2) return;
+    dragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: G.camera.x, y: G.camera.y };
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dx = Math.round((e.clientX - dragStart.x) / TILE_PX);
+    const dy = Math.round((e.clientY - dragStart.y) / TILE_PX);
+    G.camera.x = camStart.x - dx;
+    G.camera.y = camStart.y - dy;
+    render();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  window.addEventListener('keydown', (e) => {
+    if (!G || document.getElementById('game-screen').style.display === 'none') return;
+    const step = 3;
+    if (e.key === 'ArrowUp' || e.key === 'w') { G.camera.y -= step; render(); }
+    else if (e.key === 'ArrowDown' || e.key === 's') { G.camera.y += step; render(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'a') { G.camera.x -= step; render(); }
+    else if (e.key === 'ArrowRight' || e.key === 'd') { G.camera.x += step; render(); }
+    else if (e.key === 'Escape') { G.selectedUnitId = null; G.selectedCityId = null; render(); renderSelection(); }
+  });
+
+  document.getElementById('end-turn-btn').addEventListener('click', () => {
+    if (!G || G.gameOver) return;
+    const finishingPlayer = activePlayer();
+    advanceToNextPlayer(G);
+    if (G.gameOver) { showGameOver(); return; }
+    const nextPlayer = activePlayer();
+    if (nextPlayer.kind === 'human' && finishingPlayer.kind === 'human' && finishingPlayer.id !== nextPlayer.id) {
+      showHandoff(nextPlayer);
+    } else {
+      finishTurnUI();
+    }
+  });
+
+  function finishTurnUI() {
+    updateTurnIndicator();
+    render(); renderSelection(); renderLog();
+  }
+
+  const handoffOverlay = document.getElementById('handoff-overlay');
+  function showHandoff(nextPlayer) {
+    document.getElementById('handoff-title').textContent = `Pass the device to ${nextPlayer.name}`;
+    document.getElementById('handoff-text').textContent = `It's now ${nextPlayer.name}'s turn. Make sure the other player looks away, then continue.`;
+    handoffOverlay.classList.remove('hidden');
+  }
+  document.getElementById('handoff-continue').addEventListener('click', () => {
+    handoffOverlay.classList.add('hidden');
+    finishTurnUI();
+  });
+
+  const gameoverOverlay = document.getElementById('gameover-overlay');
+  function showGameOver() {
+    const winnerPlayer = playerOf(G, G.winner);
+    document.getElementById('gameover-title').textContent = `${winnerPlayer.name} wins!`;
+    document.getElementById('gameover-text').textContent = `All cities belonging to the opposing side have been conquered.`;
+    gameoverOverlay.classList.remove('hidden');
+    render(); renderLog();
+  }
+  document.getElementById('restart-btn').addEventListener('click', () => {
+    gameoverOverlay.classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('active');
+    document.getElementById('game-screen').style.display = 'none';
+    document.getElementById('setup-screen').style.display = 'flex';
+    G = null;
+  });
+
+  /* ---------------------------------------------------------------------
+   * Help overlay
+   * ------------------------------------------------------------------- */
+  const helpOverlay = document.getElementById('help-overlay');
+  function buildHelp() {
+    let html = '<table style="width:100%;border-collapse:collapse;">';
+    html += '<tr style="color:var(--accent);"><th align="left">Unit</th><th>Move</th><th>Atk</th><th>Str</th><th>Range</th><th>Build</th><th>Notes</th></tr>';
+    for (const uk of UNIT_ORDER) {
+      const d = UNIT_DEFS[uk];
+      const notes = [];
+      if (d.canCapture) notes.push('captures cities');
+      if (d.fuel > 0) notes.push(`fuel ${d.fuel}`);
+      if (d.capacity > 0) notes.push(`carries ${d.capacity} ${d.cargoType}`);
+      if (d.detectsSubs) notes.push('detects subs');
+      if (d.stealth) notes.push('hidden unless adjacent');
+      if (d.singleUse) notes.push('one-shot');
+      if (d.veteranCapable) notes.push('can become veteran');
+      if (d.noCounter) notes.push('no return fire');
+      if (d.attacksPerTurn > 1) notes.push(`${d.attacksPerTurn}x attacks/turn`);
+      html += `<tr><td>${d.name} (${d.symbol})</td><td align="center">${d.move}</td><td align="center">${d.attack}</td><td align="center">${d.hp}</td><td align="center">${d.range}</td><td align="center">${d.buildTurns}</td><td style="color:var(--dim);font-size:11px;">${notes.join(', ')}</td></tr>`;
+    }
+    html += '</table>';
+    html += '<p style="color:var(--dim);margin-top:10px;">Move an Army or Artillery onto an undefended neutral or enemy city to capture it. Damaged multi-strength units repair 1 point/turn while sitting in a friendly city. Aircraft refuel fully in a friendly city or aboard a friendly Carrier, and lose 1 fuel/turn elsewhere (crashing at 0). Fighters/Helicopters can be promoted to Veteran (+1 attack) after a won fight. Right-drag or WASD/arrows to pan the map; click the minimap to jump.</p>';
+    document.getElementById('help-body').innerHTML = html;
+  }
+  document.getElementById('help-btn').addEventListener('click', () => { buildHelp(); helpOverlay.classList.remove('hidden'); });
+  document.getElementById('help-close').addEventListener('click', () => helpOverlay.classList.add('hidden'));
+
+  /* ---------------------------------------------------------------------
+   * Setup screen
+   * ------------------------------------------------------------------- */
+  const oppSelect = document.getElementById('opp-select');
+  const diffField = document.getElementById('difficulty-field');
+  oppSelect.addEventListener('change', () => {
+    diffField.style.display = oppSelect.value === 'ai' ? 'block' : 'none';
+  });
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    const config = {
+      opponent: oppSelect.value,
+      size: document.getElementById('size-select').value,
+      land: document.getElementById('land-select').value,
+      difficulty: document.getElementById('diff-select').value,
+    };
+    G = newGame(config);
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'flex';
+    document.getElementById('game-screen').classList.add('active');
+    resizeCanvas();
+    beginTurnProcessing(G, G.players[0]);
+    log(G, 'Game started. Good luck, Commander.', true);
+    updateTurnIndicator();
+    render(); renderSelection(); renderLog();
+  });
+
+  resizeCanvas();
+})();
+</script>
+</body>
+</html>
